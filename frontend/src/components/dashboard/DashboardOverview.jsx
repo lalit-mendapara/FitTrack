@@ -9,8 +9,9 @@ import WorkoutCalendar from './WorkoutCalendar';
 import { LayoutDashboard, Sparkles, Target, Flame, Bell, X } from 'lucide-react';
 import { getUnreadNotifications, markNotificationRead } from '../../api/notifications';
 import { updateTimezone } from '../../api/user_profile';
+import LockOverlay from '../common/LockOverlay';
 
-const DashboardOverview = () => {
+const DashboardOverview = ({ hasDietPlan, hasWorkoutPlan }) => {
     const [dietData, setDietData] = useState({ caloriesTarget: 0, totalCalories: 0 });
     const [workoutData, setWorkoutData] = useState({ totalCalories: 0 });
     const [notifications, setNotifications] = useState([]);
@@ -79,7 +80,7 @@ const DashboardOverview = () => {
             )}
 
             {/* Header */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 md:p-6">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
                         <div className="p-3 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 rounded-2xl text-white shadow-lg shadow-indigo-200">
@@ -140,24 +141,60 @@ const DashboardOverview = () => {
             </div>
 
             {/* Today's Activity - Row 1 */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <TodayDietLog onDataLoaded={handleDietDataLoaded} />
-                <TodayWorkoutLog onDataLoaded={handleWorkoutDataLoaded} />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
+                <LockOverlay 
+                    isLocked={!hasDietPlan} 
+                    message="Diet Plan Not Generated" 
+                    actionLink="/dashboard?tab=diet-plan" 
+                    actionLabel="Generate Plan"
+                >
+                    <TodayDietLog onDataLoaded={handleDietDataLoaded} />
+                </LockOverlay>
+
+                <LockOverlay 
+                    isLocked={!hasWorkoutPlan} 
+                    message="Workout Plan Not Generated" 
+                    actionLink="/dashboard?tab=workout-plan"
+                    actionLabel="Generate Plan"
+                >
+                    <TodayWorkoutLog onDataLoaded={handleWorkoutDataLoaded} />
+                </LockOverlay>
             </div>
 
             {/* Daily Tracking - Row 2 */}
             <div className="w-full">
-                <WeeklyDietTrack />
+                <LockOverlay 
+                    isLocked={!hasDietPlan} 
+                    message="Diet Plan Not Generated" 
+                    actionLink="/dashboard?tab=diet-plan"
+                    actionLabel="Generate Plan"
+                >
+                    <WeeklyDietTrack />
+                </LockOverlay>
             </div>
 
             {/* Weekly Tracking - Row 3 */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <WeeklyWorkoutOverview />
-                <WeeklyGoals />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
+                <LockOverlay 
+                    isLocked={!hasWorkoutPlan} 
+                    message="Workout Plan Not Generated" 
+                    actionLink="/dashboard?tab=workout-plan"
+                    actionLabel="Generate Plan"
+                >
+                    <WeeklyWorkoutOverview />
+                </LockOverlay>
+                <WeeklyGoals hasDietPlan={hasDietPlan} hasWorkoutPlan={hasWorkoutPlan} />
             </div>
 
             {/* 8-Week Calendar - Row 4 */}
-            <WorkoutCalendar />
+            <LockOverlay 
+                isLocked={!hasWorkoutPlan} 
+                message="Workout Plan Not Generated" 
+                actionLink="/dashboard?tab=workout-plan"
+                actionLabel="Generate Plan"
+            >
+                <WorkoutCalendar isLocked={!hasWorkoutPlan} />
+            </LockOverlay>
         </div>
     );
 };

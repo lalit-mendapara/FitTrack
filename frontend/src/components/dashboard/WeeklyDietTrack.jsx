@@ -54,7 +54,7 @@ const WeeklyDietTrack = () => {
 
     if (loading) {
         return (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 h-full animate-pulse">
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 w-full animate-pulse">
                 <div className="h-6 w-1/3 bg-gray-200 rounded mb-4"></div>
                 <div className="h-48 bg-gray-100 rounded-lg"></div>
             </div>
@@ -62,7 +62,7 @@ const WeeklyDietTrack = () => {
     }
 
     return (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 h-full">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 w-full">
             <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-3">
                     <div className="p-2.5 bg-gradient-to-br from-teal-500 to-emerald-600 rounded-xl text-white shadow-lg shadow-teal-200">
@@ -79,7 +79,7 @@ const WeeklyDietTrack = () => {
                 </div>
             </div>
 
-            <div className="h-56">
+            <div className="h-56 w-full">
                 <ResponsiveContainer width="100%" height="100%" minWidth={0} debounce={200}>
                     <BarChart data={weeklyData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />

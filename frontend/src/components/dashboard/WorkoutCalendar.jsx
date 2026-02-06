@@ -2,13 +2,31 @@ import React, { useState, useEffect } from 'react';
 import { Calendar, ChevronLeft, ChevronRight, Clock, CheckCircle2, Dumbbell } from 'lucide-react';
 import api from '../../api/axios';
 
-const WorkoutCalendar = () => {
+const WorkoutCalendar = ({ isLocked = false }) => {
     const [weekOffset, setWeekOffset] = useState(0);
     const [data, setData] = useState(null);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(!isLocked); // Don't load if locked
     const [error, setError] = useState(null);
 
+    // Mock Data for Locked State (Visual Placeholder)
+    const mockData = {
+        total_weeks: 8,
+        current_week: 1,
+        date_range: "Preview Mode",
+        days: [
+            { type: 'push', title: 'Push Day', date_label: 'Mon 01', is_rest: false, completed: false },
+            { type: 'pull', title: 'Pull Day', date_label: 'Tue 02', is_rest: false, completed: false },
+            { type: 'legs', title: 'Leg Day', date_label: 'Wed 03', is_rest: false, completed: false },
+            { type: 'rest', title: 'Active Recovery', date_label: 'Thu 04', is_rest: true, completed: false },
+            { type: 'push', title: 'Upper Body', date_label: 'Fri 05', is_rest: false, completed: false },
+            { type: 'pull', title: 'Back & Biceps', date_label: 'Sat 06', is_rest: false, completed: false },
+            { type: 'rest', title: 'Rest Day', date_label: 'Sun 07', is_rest: true, completed: false },
+        ]
+    };
+
     const fetchCalendar = async () => {
+        if (isLocked) return; 
+
         try {
             setLoading(true);
             const response = await api.get('/tracking/workout-calendar', {
@@ -25,8 +43,12 @@ const WorkoutCalendar = () => {
     };
 
     useEffect(() => {
-        fetchCalendar();
-    }, [weekOffset]);
+        if (!isLocked) {
+            fetchCalendar();
+        } else {
+            setData(mockData);
+        }
+    }, [weekOffset, isLocked]);
 
     const handlePrevWeek = () => {
         setWeekOffset((prev) => (prev > 0 ? prev - 1 : 0));
@@ -139,7 +161,7 @@ const WorkoutCalendar = () => {
                             
                             // Robust Date Comparison (String based to avoid Timezone issues)
                             const todayStr = new Date().toLocaleDateString('en-CA'); // "YYYY-MM-DD" local
-                            const cardDateStr = day.date; // Assuming "YYYY-MM-DD" from backend
+                            const cardDateStr = day.date || ''; // Assuming "YYYY-MM-DD" from backend, fallback for mock
                             
                             const isToday = cardDateStr === todayStr;
                             const isPast = cardDateStr < todayStr;

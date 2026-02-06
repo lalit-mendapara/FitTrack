@@ -18,7 +18,7 @@ class LogMealRequest(BaseModel):
     protein: float
     carbs: float
     fat: float
-    date: DateType = DateType.today()
+    date: Optional[DateType] = None  # Changed from default=DateType.today()
     created_at: Optional[datetime] = None
 
 class LogWorkoutRequest(BaseModel):
@@ -30,15 +30,45 @@ class LogWorkoutRequest(BaseModel):
     muscle_group: Optional[str] = None
     notes: Optional[str] = None
     
-    date: DateType = DateType.today()
+    date: Optional[DateType] = None  # Changed from default=DateType.today()
     created_at: Optional[datetime] = None
     duration_min: Optional[int] = None
     calories_burned: Optional[float] = None
 
 class LogWorkoutSessionRequest(BaseModel):
-    date: DateType = DateType.today()
+    date: Optional[DateType] = None  # Changed from default=DateType.today()
     duration_minutes: int
     created_at: Optional[datetime] = None
+
+# --- Helper to get Local Time ---
+def get_user_local_time(user: User):
+    """
+    Returns the current datetime in the user's timezone (naive).
+    Defaults to UTC if timezone is invalid or not set.
+    """
+    import pytz
+    
+    profile = user.profile
+    if isinstance(profile, list):
+        profile = profile[0] if profile else None
+        
+    tz_name = getattr(profile, 'timezone', 'UTC')
+    if not tz_name:
+        tz_name = 'UTC'
+        
+    try:
+        user_tz = pytz.timezone(tz_name)
+    except pytz.UnknownTimeZoneError:
+        user_tz = pytz.UTC
+        
+    # Get current UTC time and convert to user's timezone
+    server_now = datetime.now(pytz.UTC)
+    user_now = server_now.astimezone(user_tz)
+    
+    # Return as naive datetime (strip tzinfo) because DB usually expects naive
+    # or if we want to store it as "User's Wall Clock Time"
+    return user_now.replace(tzinfo=None)
+
 
 # --- Endpoints ---
 
@@ -51,19 +81,27 @@ def log_meal(
     """
     Log a meal to the user's history.
     """
+    # Determine defaults based on user's timezone
+    if not request.date or not request.created_at:
+        local_now = get_user_local_time(current_user)
+        
+        final_date = request.date if request.date else local_now.date()
+        final_created_at = request.created_at if request.created_at else local_now
+    else:
+        final_date = request.date
+        final_created_at = request.created_at
+
     new_log = FoodLog(
         user_id=current_user.id,
-        date=request.date,
+        date=final_date,
         food_name=request.meal_name,
         meal_type=request.meal_type,
         calories=request.calories,
         protein=request.protein,
         carbs=request.carbs,
-        fat=request.fat
+        fat=request.fat,
+        created_at=final_created_at
     )
-    
-    if request.created_at:
-        new_log.created_at = request.created_at
     
     db.add(new_log)
     db.commit()
@@ -78,9 +116,19 @@ def log_workout(
     """
     Log a workout to the user's history.
     """
+    # Determine defaults based on user's timezone
+    if not request.date or not request.created_at:
+        local_now = get_user_local_time(current_user)
+        
+        final_date = request.date if request.date else local_now.date()
+        final_created_at = request.created_at if request.created_at else local_now
+    else:
+        final_date = request.date
+        final_created_at = request.created_at
+
     new_log = WorkoutLog(
         user_id=current_user.id,
-        date=request.date,
+        date=final_date,
         exercise_name=request.exercise_name,
         img_url=request.img_url,
         sets=request.sets,
@@ -89,12 +137,10 @@ def log_workout(
         muscle_group=request.muscle_group,
         notes=request.notes,
         duration_min=request.duration_min,
-        calories_burned=request.calories_burned
+        calories_burned=request.calories_burned,
+        created_at=final_created_at
     )
 
-    if request.created_at:
-        new_log.created_at = request.created_at
-    
     db.add(new_log)
     db.commit()
     return {"message": "Workout logged successfully", "log_id": new_log.id}
@@ -109,25 +155,37 @@ def log_workout_session(
     Log or Update a workout session duration for a specific date.
     If a session already exists for this date, update it.
     """
+    # Determine defaults based on user's timezone
+    if not request.date:
+        local_now = get_user_local_time(current_user)
+        final_date = local_now.date()
+    else:
+        final_date = request.date
+
     # Check if session exists for this date
     existing_session = db.query(WorkoutSession).filter(
         WorkoutSession.user_id == current_user.id,
-        WorkoutSession.date == request.date
+        WorkoutSession.date == final_date
     ).first()
     
     if existing_session:
         existing_session.duration_minutes = request.duration_minutes
-        # Update created_at to now? Or keep original? Usually update timestamp like updated_at is better but for now just update duration
         db.commit()
         return {"message": "Workout session updated", "session_id": existing_session.id}
     else:
+        # For new session, if created_at not provided, use local time
+        if not request.created_at:
+            local_now = get_user_local_time(current_user)
+            final_created_at = local_now
+        else:
+            final_created_at = request.created_at
+
         new_session = WorkoutSession(
             user_id=current_user.id,
-            date=request.date,
-            duration_minutes=request.duration_minutes
+            date=final_date,
+            duration_minutes=request.duration_minutes,
+            created_at=final_created_at
         )
-        if request.created_at:
-            new_session.created_at = request.created_at
             
         db.add(new_session)
         db.commit()

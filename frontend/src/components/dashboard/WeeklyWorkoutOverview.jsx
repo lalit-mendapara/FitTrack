@@ -45,7 +45,7 @@ const WeeklyWorkoutOverview = () => {
         </div>
       </div>
 
-      <div className="h-64 w-full mb-8">
+      <div className="h-64 w-full mb-8 flex-shrink-0">
         <ResponsiveContainer width="100%" height="100%" minWidth={0} debounce={200}>
           <BarChart data={data.chart_data} barSize={40}>
             <XAxis 

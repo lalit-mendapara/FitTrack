@@ -1,7 +1,8 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { getProfile } from '../services/profileService';
-import { getDoWorkoutPreferencesExist } from '../services/workoutService';
+import { getDoWorkoutPreferencesExist, getCurrentWorkoutPlan } from '../services/workoutService';
+import { getCurrentMealPlan } from '../services/mealPlanService';
 import { useAuth } from '../context/AuthContext';
 
 /**
@@ -13,6 +14,8 @@ export const useProfile = () => {
     const { user } = useAuth();
     const [hasPhysicalProfile, setHasPhysicalProfile] = useState(null); // null = loading
     const [hasWorkoutPreferences, setHasWorkoutPreferences] = useState(null);
+    const [hasDietPlan, setHasDietPlan] = useState(null);
+    const [hasWorkoutPlan, setHasWorkoutPlan] = useState(null);
     const [loading, setLoading] = useState(true);
     
     const checkPerformed = useRef(false);
@@ -46,10 +49,34 @@ export const useProfile = () => {
                  setHasWorkoutPreferences(false);
             }
 
+            // Check Diet Plan
+            if (hasPhysicalProfile !== false) { // Optimization: Don't check if profile doesn't exist
+                try {
+                    await getCurrentMealPlan();
+                    setHasDietPlan(true);
+                } catch (err) {
+                    setHasDietPlan(false);
+                }
+            } else {
+                 setHasDietPlan(false);
+            }
+
+            // Check Workout Plan
+            if (hasPhysicalProfile !== false) {
+                 try {
+                    await getCurrentWorkoutPlan();
+                    setHasWorkoutPlan(true);
+                } catch (err) {
+                    setHasWorkoutPlan(false);
+                }
+            } else {
+                setHasWorkoutPlan(false);
+            }
+
         } finally {
             setLoading(false);
         }
-    }, [user?.id]);
+    }, [user?.id, hasPhysicalProfile]);
 
     useEffect(() => {
         checkStatus();
@@ -62,9 +89,13 @@ export const useProfile = () => {
     return {
         hasPhysicalProfile,
         hasWorkoutPreferences,
+        hasDietPlan,
+        hasWorkoutPlan,
         loading,
         refreshProfileStatus,
-        setHasPhysicalProfile,     // expose setters for optimistic updates
-        setHasWorkoutPreferences
+        setHasPhysicalProfile,     
+        setHasWorkoutPreferences,
+        setHasDietPlan,
+        setHasWorkoutPlan
     };
 };

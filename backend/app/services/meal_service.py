@@ -14,6 +14,7 @@ from app.schemas.meal_plan import MealPlanResponse, MealItem, NutrientDetail, Nu
 
 from app.services import llm_service
 from app.services import nutrition_service
+from app.services import ingredient_mapper
 from app.crud import meal_plan as crud_meal_plan
 
 logger = logging.getLogger(__name__)
@@ -569,6 +570,238 @@ def calculate_meal_macros_from_db(db: Session, portion_str: str) -> Dict:
     return analysis
 
 
+# ============================================================================
+# TWO-PHASE ARCHITECTURE: BACKEND CALCULATION
+# ============================================================================
+
+def calculate_portions_from_dishes(
+    db: Session, 
+    meals: List[Dict], 
+    targets: Dict, 
+    diet_type: str = None,
+    fitness_goal: str = None
+) -> List[Dict]:
+    """
+    PHASE 2 of Two-Phase Architecture: Backend Calculation
+    
+    Takes LLM-selected dishes and calculates:
+    1. Optimal portion sizes (to hit macro targets)
+    2. Accurate nutrients (from FoodItem DB)
+    
+    This is the single source of truth for nutrients - no LLM estimation.
+    
+    Args:
+        db: Database session
+        meals: List of meal dicts from LLM (dish_name, is_veg, alternatives, guidelines)
+        targets: User's daily macro targets {calories, protein, fat, carbs}
+        diet_type: User's diet preference (for ingredient filtering)
+        fitness_goal: For meal ratio calculation
+    
+    Returns:
+        List of meals with portion_size and nutrients populated
+    """
+    print("\n" + "=" * 70)
+    print("       PHASE 2: BACKEND CALCULATION (Two-Phase Architecture)")
+    print("=" * 70)
+    print(f"  Daily Targets: {targets['calories']:.0f}kcal | P:{targets['protein']:.1f}g | C:{targets['carbs']:.1f}g | F:{targets['fat']:.1f}g")
+    print("=" * 70)
+    
+    meal_ratios = get_meal_ratios_by_fitness_goal(fitness_goal)
+    total_target_cal = float(targets.get("calories", 2000))
+    total_target_p = float(targets.get("protein", 150))
+    total_target_c = float(targets.get("carbs", 200))
+    total_target_f = float(targets.get("fat", 60))
+    
+    calculated_meals = []
+    
+    for meal in meals:
+        meal_id = meal.get("meal_id", "meal").lower()
+        dish_name = meal.get("dish_name", "")
+        
+        if meal_id not in meal_ratios:
+            meal_ratios[meal_id] = 0.25
+        
+        # Meal-specific targets
+        ratio = meal_ratios[meal_id]
+        m_target_cal = total_target_cal * ratio
+        m_target_p = total_target_p * ratio
+        m_target_c = total_target_c * ratio
+        m_target_f = total_target_f * ratio
+        
+        print(f"\n  📊 {meal_id.upper()} Targets: {m_target_cal:.0f}kcal | P:{m_target_p:.1f}g | C:{m_target_c:.1f}g | F:{m_target_f:.1f}g")
+        
+        # Step 1: Map dish to food items using ingredient_mapper
+        ingredient_mappings = ingredient_mapper.map_dish_to_food_items(
+            db, dish_name, diet_type, meal_id
+        )
+        
+        if not ingredient_mappings:
+            # Fallback: Keep original meal, try to parse from dish_name directly
+            print(f"  ⚠ No ingredients mapped, using fallback calculation")
+            calculated_meals.append(_fallback_meal_calculation(meal, m_target_cal, m_target_p, m_target_c, m_target_f))
+            continue
+        
+        # Step 2: Build work items for optimization
+        work_items = []
+        for ing_name, food_item, match_type in ingredient_mappings:
+            if food_item:
+                # Use DB macros (per 100g)
+                density = {
+                    "p": float(food_item.protein_g) / 100,
+                    "c": float(food_item.carb_g) / 100,
+                    "f": float(food_item.fat_g) / 100,
+                    "cal": float(food_item.calories_kcal) / 100
+                }
+                
+                # Classify role based on macro density
+                cal_p = density['p'] * 4
+                cal_c = density['c'] * 4
+                cal_f = density['f'] * 9
+                total_dense = cal_p + cal_c + cal_f
+                
+                role = "mix"
+                if total_dense > 0:
+                    if cal_p > 0.4 * total_dense: role = "protein"
+                    elif cal_c > 0.5 * total_dense: role = "carb"
+                    elif cal_f > 0.5 * total_dense: role = "fat"
+                
+                work_items.append({
+                    "name": food_item.name,
+                    "weight": 100,  # Start with 100g each
+                    "density": density,
+                    "role": role,
+                    "orig_weight": 100
+                })
+            else:
+                # Use fallback macros
+                fallback = ingredient_mapper.get_fallback_macros(ing_name)
+                density = {k: v/100 for k, v in fallback.items()}
+                
+                work_items.append({
+                    "name": ing_name,
+                    "weight": 100,
+                    "density": density,
+                    "role": "mix",
+                    "orig_weight": 100
+                })
+        
+        if not work_items:
+            calculated_meals.append(_fallback_meal_calculation(meal, m_target_cal, m_target_p, m_target_c, m_target_f))
+            continue
+        
+        # Step 3: Iterative Optimization (same algorithm as optimize_meal_portions_iterative)
+        iterations = 15
+        learning_rate = 0.15
+        
+        for i in range(iterations):
+            # Calculate current totals
+            cur_p = cur_c = cur_f = cur_cal = 0
+            for w in work_items:
+                wt = w["weight"]
+                cur_p += wt * w["density"]["p"]
+                cur_c += wt * w["density"]["c"]
+                cur_f += wt * w["density"]["f"]
+                cur_cal += wt * w["density"]["cal"]
+            
+            if cur_cal == 0:
+                break
+            
+            # Strict calorie normalization
+            cal_scale = m_target_cal / cur_cal
+            for w in work_items:
+                w["weight"] *= cal_scale
+            
+            # Recalculate after normalization
+            cur_p = cur_c = cur_f = cur_cal = 0
+            for w in work_items:
+                wt = w["weight"]
+                cur_p += wt * w["density"]["p"]
+                cur_c += wt * w["density"]["c"]
+                cur_f += wt * w["density"]["f"]
+                cur_cal += wt * w["density"]["cal"]
+            
+            # Adjust based on macro deviations
+            if i < iterations - 1:
+                p_dev = (cur_p - m_target_p) / m_target_p if m_target_p > 0 else 0
+                c_dev = (cur_c - m_target_c) / m_target_c if m_target_c > 0 else 0
+                f_dev = (cur_f - m_target_f) / m_target_f if m_target_f > 0 else 0
+                
+                for w in work_items:
+                    role = w["role"]
+                    factor = 1.0
+                    
+                    if role == "protein":
+                        if p_dev < -0.05: factor += learning_rate
+                        elif p_dev > 0.05: factor -= learning_rate
+                    elif role == "carb":
+                        if c_dev < -0.05: factor += learning_rate
+                        elif c_dev > 0.05: factor -= learning_rate
+                    elif role == "fat":
+                        if f_dev < -0.05: factor += learning_rate
+                        elif f_dev > 0.05: factor -= learning_rate
+                    
+                    w["weight"] *= factor
+                    if w["weight"] < 10:
+                        w["weight"] = 10
+        
+        # Step 4: Format final output
+        portion_parts = []
+        final_p = final_c = final_f = final_cal = 0
+        
+        for w in work_items:
+            final_weight = round(w["weight"] / 5) * 5  # Round to nearest 5g
+            if final_weight < 5:
+                final_weight = 5
+            
+            portion_parts.append(f"{int(final_weight)}g {w['name']}")
+            
+            final_p += final_weight * w["density"]["p"]
+            final_c += final_weight * w["density"]["c"]
+            final_f += final_weight * w["density"]["f"]
+            final_cal += final_weight * w["density"]["cal"]
+        
+        # Build calculated meal
+        calculated_meal = meal.copy()
+        calculated_meal["portion_size"] = ", ".join(portion_parts)
+        calculated_meal["nutrients"] = {
+            "p": round(final_p, 1),
+            "c": round(final_c, 1),
+            "f": round(final_f, 1),
+            "cal": round(final_cal)
+        }
+        
+        # Log the calculation result
+        print(f"  ✓ {meal_id.upper()} Calculated: {final_cal:.0f}kcal | P:{final_p:.1f}g | C:{final_c:.1f}g | F:{final_f:.1f}g")
+        print(f"    └── Portions: {calculated_meal['portion_size']}")
+        
+        calculated_meals.append(calculated_meal)
+    
+    print("\n" + "=" * 70)
+    return calculated_meals
+
+
+def _fallback_meal_calculation(meal: Dict, target_cal: float, target_p: float, target_c: float, target_f: float) -> Dict:
+    """
+    Fallback calculation when ingredient mapping fails.
+    Uses generic macro ratios to estimate portions.
+    """
+    dish_name = meal.get("dish_name", "Mixed Meal")
+    
+    # Create a simple fallback portion
+    fallback_meal = meal.copy()
+    fallback_meal["portion_size"] = f"~400g {dish_name}"
+    fallback_meal["nutrients"] = {
+        "p": round(target_p, 1),
+        "c": round(target_c, 1),
+        "f": round(target_f, 1),
+        "cal": round(target_cal)
+    }
+    
+    return fallback_meal
+
+
+
+
 def optimize_meal_portions_iterative(db: Session, meals: List[Dict], targets: Dict, fitness_goal: str = None) -> List[Dict]:
     """
     Iteratively optimizes portion sizes to match Macro Targets (P/C/F) while keeping Calories strict.
@@ -1122,20 +1355,17 @@ Examples:
     user_prompt_text = f"""
 # ROLE (Persona)
 You are a professional Nutritionist and Meal Planner.
+Your job is to SELECT DISHES - we will calculate portions and nutrients automatically.
 
 # CONTEXT
 - Diet Type: {display_diet}
 - Region: {region}
-- Calorie Target: ~{int(total_cal)}kcal (Approximate is fine)
-- Macro Split: Breakfast 35%, Lunch 30%, Dinner 25%, Snacks 10%
 - Available Foods:
 {food_context[:1500]}
 
 # TASK (Goal)
-Generate a comprehensive meal plan that:
-1. Aligns with the calorie target and macro split.
-2. Adheres to the {display_diet} diet and {region} regional preferences.
-3. Incorporates custom user requirements: {custom_prompt if custom_prompt else "None"}
+Select 4 meals (Breakfast, Lunch, Dinner, Snacks) using the available foods.
+Custom user requirements: {custom_prompt if custom_prompt else "None"}
 
 # CONSTRAINTS (Formatting & Instructions)
 {mix_instruction}
@@ -1147,21 +1377,16 @@ Generate a comprehensive meal plan that:
 Format: "Main Dish (veg/non-veg) + Accompaniment + Side"
 {region_dish_examples}
 
-=== PORTION SIZE RULES ===
-Total per meal: 450g to 600g.
-Example: "200g Palak Paneer, 150g Rice, 100g Salad"
-
-=== OUTPUT JSON ===
-Strictly output ONLY valid JSON in the following format:
+=== OUTPUT JSON (SIMPLIFIED) ===
+You only need to provide dish selection. We calculate nutrients automatically.
+Strictly output ONLY valid JSON:
 {{{{
   "meal_plan": [
     {{
       "meal_id": "breakfast",
       "label": "Breakfast",
       "is_veg": true,
-      "dish_name": "Poha (veg) + Curd + Apple Slices",
-      "portion_size": "250g Poha, 100g Curd, 100g Apple",
-      "nutrients": {{"p": 25, "c": 80, "f": 15}},
+      "dish_name": "Poha (veg) + Curd + Apple",
       "alternatives": ["Upma (veg)", "Idli (veg)"],
       "guidelines": ["Add peanuts for protein", "Pair with green tea"]
     }},
@@ -1170,8 +1395,6 @@ Strictly output ONLY valid JSON in the following format:
       "label": "Lunch",
       "is_veg": true,
       "dish_name": "...",
-      "portion_size": "...",
-      "nutrients": {{"p": 30, "c": 80, "f": 20}},
       "alternatives": ["...", "..."],
       "guidelines": ["...", "..."]
     }},
@@ -1180,8 +1403,6 @@ Strictly output ONLY valid JSON in the following format:
       "label": "Dinner",
       "is_veg": true,
       "dish_name": "...",
-      "portion_size": "...",
-      "nutrients": {{"p": 25, "c": 60, "f": 20}},
       "alternatives": ["...", "..."],
       "guidelines": ["...", "..."]
     }},
@@ -1190,16 +1411,17 @@ Strictly output ONLY valid JSON in the following format:
       "label": "Snacks",
       "is_veg": true,
       "dish_name": "...",
-      "portion_size": "...",
-      "nutrients": {{"p": 10, "c": 30, "f": 10}},
       "alternatives": ["...", "..."],
       "guidelines": ["...", "..."]
     }}
   ]
 }}}}
 
-RULES: Use authentic {region} food names. Include (veg/non-veg) label. Total portions 450-600g. 
-IMPORTANT: Do NOT calculate exact macros. Just estimate. Output JSON only."""
+RULES: 
+- Use authentic {region} food names
+- Include (veg/non-veg) label in dish_name
+- DO NOT include "portion_size" or "nutrients" - we calculate those automatically
+- Output JSON only."""
     
     # 6. Call LLM (with Retry Logic)
     # Use higher temperature for variety mode to encourage creative alternatives
@@ -1293,22 +1515,35 @@ IMPORTANT: Do NOT calculate exact macros. Just estimate. Output JSON only."""
                     generated_meals[i] = restored_meal
 
         if generated_meals:
-            # 7. DIRECT CALCULATION Logic
+            # ===============================================================
+            # PHASE 2: BACKEND CALCULATION (Two-Phase Architecture)
+            # ===============================================================
+            # LLM has selected dishes. Now we calculate portions and nutrients.
             try:
-                # Direct Portion Calculation (No Iterative Loop)
-                generated_meals = optimize_meal_portions_iterative(db, generated_meals, targets, profile.fitness_goal)
+                # Use the new two-phase calculation approach
+                generated_meals = calculate_portions_from_dishes(
+                    db=db, 
+                    meals=generated_meals, 
+                    targets=targets, 
+                    diet_type=profile.diet_type,
+                    fitness_goal=profile.fitness_goal
+                )
             except Exception as e:
-                logger.error(f"Portion calculation error: {e}")
-                # Continue anyway, validation will catch it
+                logger.error(f"Two-Phase calculation error: {e}")
+                # Fallback to old method if new one fails
+                try:
+                    generated_meals = optimize_meal_portions_iterative(db, generated_meals, targets, profile.fitness_goal)
+                except Exception as e2:
+                    logger.error(f"Fallback calculation also failed: {e2}")
             
             # Recalculate Totals for Validation
             total_metrics = {"p": 0, "c": 0, "f": 0, "cal": 0}
             for item in generated_meals:
-                nutrients = item["nutrients"]
-                total_metrics["p"] += float(nutrients["p"])
-                total_metrics["c"] += float(nutrients["c"])
-                total_metrics["f"] += float(nutrients["f"])
-                total_metrics["cal"] += float(nutrients["cal"])
+                nutrients = item.get("nutrients", {})
+                total_metrics["p"] += float(nutrients.get("p", 0))
+                total_metrics["c"] += float(nutrients.get("c", 0))
+                total_metrics["f"] += float(nutrients.get("f", 0))
+                total_metrics["cal"] += float(nutrients.get("cal", 0))
             
             # Final Validation Logging
             final_generated_totals = {
@@ -1319,11 +1554,11 @@ IMPORTANT: Do NOT calculate exact macros. Just estimate. Output JSON only."""
             }
             is_valid, deviations = validate_macro_deviation(final_generated_totals, targets)
             
-            # --- DEBUG: Show Target vs Generated Comparison ---
+            # --- DEBUG: Show Target vs Backend-Calculated Comparison ---
             print("\n" + "=" * 70)
-            print("        LLM GENERATED VALUES vs USER PROFILE TARGETS")
+            print("       BACKEND CALCULATED VALUES vs USER PROFILE TARGETS")
             print("=" * 70)
-            print(f"{'METRIC':<12} | {'PROFILE TARGET':<15} | {'LLM GENERATED':<15} | {'DEVIATION':<13}| {'STATUS':<6}")
+            print(f"{'METRIC':<12} | {'PROFILE TARGET':<15} | {'CALCULATED':<15} | {'DEVIATION':<13}| {'STATUS':<6}")
             print("-" * 70)
             
             for key in ["calories", "protein", "carbs", "fat"]:

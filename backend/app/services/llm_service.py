@@ -4,8 +4,9 @@ import sys
 import json
 from typing import Dict, List, Optional, Any
 
-# LangChain Imports - using the updated langchain-ollama package
+# LangChain Imports
 from langchain_ollama import ChatOllama
+from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from langchain_core.outputs import LLMResult
 
@@ -25,12 +26,26 @@ if sys.version_info < (3, 14):
         print(f"[Langfuse] Import error: {e}")
 
 # Configuration
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+from config import LLM_PROVIDER, LLM_API_KEY, LLM_MODEL as OVERRIDE_MODEL
 
 # Default to local Ollama instance
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
-# Default to the requested model
-MODEL_NAME = os.getenv("OLLAMA_MODEL", "gpt-oss:120b-cloud")
+
+# Determine Model Name based on Provider
+# If LLM_MODEL is set in env, it overrides everything.
+DEFAULT_MODELS = {
+    "ollama": "gpt-oss:120b-cloud",
+    "openrouter": "google/gemini-2.0-flash-001", # Cost effective default
+    "openai": "gpt-4o",
+}
+
+MODEL_NAME = OVERRIDE_MODEL if OVERRIDE_MODEL else DEFAULT_MODELS.get(LLM_PROVIDER, "gpt-3.5-turbo")
+
+# Base URLs for paid providers
+PROVIDER_URLS = {
+    "openrouter": "https://openrouter.ai/api/v1",
+    "openai": None # Uses default OpenAI URL
+}
 
 if LANGFUSE_ENABLED:
     print("[Langfuse] Tracing enabled via @observe decorator with usage tracking")
@@ -41,18 +56,53 @@ else:
 
 def get_llm(temperature: float = 0.7, max_tokens: int = 2000, json_mode: bool = False):
     """
-    Factory function to get a configured ChatOllama instance.
+    Factory function to get a configured LangChain Chat Model instance.
+    Supports: Ollama (Local), OpenRouter, OpenAI
     """
-    format_val = "json" if json_mode else ""
     
-    return ChatOllama(
-        base_url=OLLAMA_URL,
-        model=MODEL_NAME,
-        temperature=temperature,
-        num_predict=max_tokens,
-        format=format_val,
-        timeout=120.0
-    )
+    # 1. Ollama (Local)
+    if LLM_PROVIDER == "ollama":
+        format_val = "json" if json_mode else ""
+        return ChatOllama(
+            base_url=OLLAMA_URL,
+            model=MODEL_NAME,
+            temperature=temperature,
+            num_predict=max_tokens,
+            format=format_val,
+            timeout=120.0
+        )
+    
+    # 2. OpenAI Compatible (OpenRouter, OpenAI)
+    elif LLM_PROVIDER in ["openrouter", "openai"]:
+        if not LLM_API_KEY:
+            print(f"[LLM Service] CRITICAL: Missing API Key for provider {LLM_PROVIDER}")
+            # Fallback to Ollama or Raise Error? 
+            # For now, let it fail so user knows config is wrong.
+        
+        model_kwargs = {}
+        if json_mode:
+            model_kwargs["response_format"] = {"type": "json_object"}
+            
+        return ChatOpenAI(
+            model=MODEL_NAME,
+            api_key=LLM_API_KEY,
+            base_url=PROVIDER_URLS.get(LLM_PROVIDER),
+            temperature=temperature,
+            max_tokens=max_tokens,
+            model_kwargs=model_kwargs,
+            timeout=60.0
+        )
+    
+    # 3. Fallback / Unknown
+    else:
+        print(f"[LLM Service] Warning: Unknown provider '{LLM_PROVIDER}'. Defaulting to Ollama.")
+        return ChatOllama(
+            base_url=OLLAMA_URL,
+            model=MODEL_NAME,
+            temperature=temperature,
+            num_predict=max_tokens,
+            timeout=120.0
+        )
 
 def validate_user_prompt(prompt: str, context_type: str = "general") -> bool:
     """

@@ -23,6 +23,8 @@ const Dashboard = () => {
     const { 
         hasPhysicalProfile, 
         hasWorkoutPreferences, 
+        hasDietPlan,
+        hasWorkoutPlan,
         loading: loadingProfile, 
         setHasPhysicalProfile, 
         setHasWorkoutPreferences,
@@ -48,6 +50,9 @@ const Dashboard = () => {
         if (!loadingProfile && !hasPhysicalProfile && activeSection !== 'update-profile') {
             // Replace history to avoid back-button loops or just set params
             setSearchParams({ tab: 'update-profile' }, { replace: true });
+        } else if (!loadingProfile && hasPhysicalProfile && (hasDietPlan || hasWorkoutPlan) && (!searchParams.get('tab') || searchParams.get('tab') === 'profile')) {
+            // New logic: Existing users (with at least one plan) redirect to dashboard overview
+             setSearchParams({ tab: 'dashboard-overview' }, { replace: true });
         }
     }, [loadingProfile, hasPhysicalProfile, activeSection, setSearchParams]);
 
@@ -147,7 +152,7 @@ const Dashboard = () => {
             case 'ai-coach':
                 return <AICoach />;
             case 'dashboard-overview':
-                return <DashboardOverview />;
+                return <DashboardOverview hasDietPlan={hasDietPlan} hasWorkoutPlan={hasWorkoutPlan} />;
             default:
                 return <UserProfileDisplay 
                            user={user} 
@@ -162,7 +167,7 @@ const Dashboard = () => {
         { 
             id: 'dashboard-overview', 
             label: 'Dashboard',
-            locked: false 
+            locked: !hasDietPlan && !hasWorkoutPlan && !loadingProfile
         },
         { 
             id: 'diet-plan', 
@@ -177,7 +182,7 @@ const Dashboard = () => {
         { 
             id: 'ai-coach', 
             label: 'AI Coach',
-            locked: false 
+            locked: !hasDietPlan && !hasWorkoutPlan && !loadingProfile
         },
     ];
 
@@ -229,6 +234,14 @@ const Dashboard = () => {
                                             autoClose: 3000
                                         });
                                         setSearchParams({ tab: 'update-profile' });
+                                    } else if ((item.id === 'dashboard-overview' || item.id === 'ai-coach') && (!hasDietPlan && !hasWorkoutPlan)) {
+                                         toast.info("Please generate a Diet Plan or Workout Plan to unlock the Dashboard and AI Coach.", {
+                                            autoClose: 3000
+                                        });
+                                         // Redirect to diet plan if available, else profile (handled by profile check)
+                                         if (hasPhysicalProfile) {
+                                             setSearchParams({ tab: 'diet-plan' });
+                                         }
                                     }
                                     return;
                                 }

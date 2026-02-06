@@ -11,6 +11,12 @@ ALGORITHM = os.getenv("ALGORITHM")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY")
 
+# LLM Selection Configuration
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama").lower() # Options: ollama, router, openai
+LLM_API_KEY = os.getenv("LLM_API_KEY") or OPENROUTER_API_KEY # Fallback for backward compatibility
+LLM_MODEL = os.getenv("LLM_MODEL") # Optional override
+
+
 QDRANT_URL = os.getenv("QDRANT_URL")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
