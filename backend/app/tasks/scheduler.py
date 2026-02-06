@@ -30,9 +30,9 @@ def generate_plan_for_user(user_id: int):
     try:
         logger.info(f"Generating daily plan for user {user_id}")
         
-        # 1. Generate Plan
-        # We assume this function saves to DB internally
-        meal_service.generate_meal_plan(db, user_id)
+        # 1. Generate Plan with History-Based Variety
+        # Uses last 8 plans to ensure no dish repetition
+        meal_service.regenerate_meal_plan_with_history(db, user_id)
         
         # 2. Create Notification
         notif = Notification(
