@@ -327,3 +327,152 @@ def get_fallback_macros(ingredient_name: str) -> Dict[str, float]:
     
     # Default fallback (balanced macro estimate)
     return {"p": 5.0, "c": 15.0, "f": 5.0, "cal": 125}
+
+
+# ============================================================================
+# INGREDIENT ROLE CLASSIFICATION (Human-Realistic Portions)
+# ============================================================================
+# Roles determine how portions are constrained:
+# - PRIMARY: Main dish, scales freely to hit targets (150g-400g)
+# - SECONDARY: Accompaniment like dal/curry (80g-250g)
+# - SIDE: Small additions like curd, raita, chutney (30g-150g)
+# - BEVERAGE: Tea, coffee, juice - FIXED size, excluded from optimization
+# ============================================================================
+
+# Role definitions with min/max constraints (in grams)
+ROLE_CONSTRAINTS = {
+    "primary": {"min": 150, "max": 400, "default": 250, "scalable": True},
+    "secondary": {"min": 80, "max": 250, "default": 150, "scalable": True},
+    "side": {"min": 30, "max": 150, "default": 100, "scalable": False},  # Limited scaling
+    "beverage": {"min": 150, "max": 250, "default": 200, "scalable": False},  # Fixed, excluded from optimization
+}
+
+# Keywords to identify ingredient roles
+ROLE_KEYWORDS = {
+    "primary": [
+        # Main carbs
+        "poha", "upma", "idli", "dosa", "paratha", "rice", "biryani", "pulao", "khichdi",
+        "roti", "chapati", "naan", "bread", "pasta", "noodles", "oats", "porridge",
+        # Main proteins
+        "chicken", "mutton", "fish", "egg", "paneer", "tofu", "soya",
+        "dal", "lentil", "rajma", "chole", "chana", "kidney beans",
+        # Full dishes
+        "curry", "sabzi", "bhaji", "korma", "masala", "tikka", "kebab",
+    ],
+    "secondary": [
+        # Accompanying dishes
+        "dal", "sambar", "rasam", "kadhi", "gravy",
+        # Vegetables
+        "vegetable", "bhindi", "gobi", "aloo", "palak", "methi",
+        # Protein sides
+        "egg curry", "omelette",
+    ],
+    "side": [
+        # Dairy sides
+        "curd", "yogurt", "raita", "lassi", "buttermilk", "chaach",
+        # Condiments & sides
+        "pickle", "chutney", "papad", "pappadam",
+        # Salads & raw
+        "salad", "cucumber", "tomato", "onion", "carrot",
+        # Fruits
+        "apple", "banana", "orange", "mango", "fruit", "papaya", "grapes",
+    ],
+    "beverage": [
+        # Hot beverages
+        "tea", "chai", "coffee", "green tea", "herbal tea", "black tea",
+        # Cold beverages  
+        "juice", "smoothie", "shake", "lemonade", "nimbu pani", "jaljeera",
+        # Water-based
+        "water", "coconut water",
+    ],
+}
+
+# Standard serving sizes for beverages (in ml/g)
+BEVERAGE_SERVING_SIZES = {
+    "tea": 150,
+    "chai": 150, 
+    "green tea": 200,
+    "black tea": 200,
+    "herbal tea": 200,
+    "coffee": 150,
+    "juice": 200,
+    "smoothie": 250,
+    "shake": 300,
+    "lassi": 200,
+    "buttermilk": 200,
+    "chaach": 200,
+    "coconut water": 200,
+    "lemonade": 250,
+    "nimbu pani": 250,
+    "water": 250,
+}
+
+
+def classify_ingredient_role(ingredient_name: str, position_in_dish: int = 0) -> str:
+    """
+    Classify an ingredient into a role for portion optimization.
+    
+    Args:
+        ingredient_name: Name of the ingredient
+        position_in_dish: Position in the dish list (0 = first/main)
+    
+    Returns:
+        Role string: "primary", "secondary", "side", or "beverage"
+    """
+    name_lower = ingredient_name.lower().strip()
+    
+    # Check each role's keywords
+    for role, keywords in ROLE_KEYWORDS.items():
+        for keyword in keywords:
+            if keyword in name_lower or name_lower in keyword:
+                return role
+    
+    # Position-based fallback:
+    # First ingredient is usually the main dish
+    if position_in_dish == 0:
+        return "primary"
+    elif position_in_dish == 1:
+        return "secondary"
+    else:
+        return "side"
+
+
+def get_portion_constraints(role: str) -> Dict:
+    """
+    Get min/max/default portion constraints for a role.
+    """
+    return ROLE_CONSTRAINTS.get(role, ROLE_CONSTRAINTS["side"])
+
+
+def get_beverage_serving_size(ingredient_name: str) -> int:
+    """
+    Get standard serving size for a beverage.
+    Returns default 200ml if not found.
+    """
+    name_lower = ingredient_name.lower().strip()
+    
+    for beverage, size in BEVERAGE_SERVING_SIZES.items():
+        if beverage in name_lower or name_lower in beverage:
+            return size
+    
+    return 200  # Default serving
+
+
+def is_beverage(ingredient_name: str) -> bool:
+    """
+    Check if ingredient is a beverage (should be excluded from macro optimization).
+    """
+    return classify_ingredient_role(ingredient_name) == "beverage"
+
+
+def log_role_classification(ingredient: str, role: str, constraints: Dict):
+    """Log the role classification for terminal output."""
+    emoji_map = {"primary": "🍚", "secondary": "🍛", "side": "🥗", "beverage": "☕"}
+    emoji = emoji_map.get(role, "❓")
+    
+    if role == "beverage":
+        print(f"    {emoji} Role: {role.upper()} (FIXED: ~{constraints['default']}ml, excluded from optimization)")
+    else:
+        scalable = "scalable" if constraints['scalable'] else "limited"
+        print(f"    {emoji} Role: {role.upper()} ({constraints['min']}g-{constraints['max']}g, {scalable})")
+

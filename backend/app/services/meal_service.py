@@ -641,9 +641,18 @@ def calculate_portions_from_dishes(
             calculated_meals.append(_fallback_meal_calculation(meal, m_target_cal, m_target_p, m_target_c, m_target_f))
             continue
         
-        # Step 2: Build work items for optimization
+        # Step 2: Build work items with ROLE CLASSIFICATION for human-realistic portions
         work_items = []
-        for ing_name, food_item, match_type in ingredient_mappings:
+        beverage_items = []  # Beverages are tracked separately (excluded from optimization)
+        
+        for idx, (ing_name, food_item, match_type) in enumerate(ingredient_mappings):
+            # Classify ingredient role based on name and position
+            role = ingredient_mapper.classify_ingredient_role(ing_name, position_in_dish=idx)
+            constraints = ingredient_mapper.get_portion_constraints(role)
+            
+            # Log role classification
+            ingredient_mapper.log_role_classification(ing_name, role, constraints)
+            
             if food_item:
                 # Use DB macros (per 100g)
                 density = {
@@ -652,49 +661,68 @@ def calculate_portions_from_dishes(
                     "f": float(food_item.fat_g) / 100,
                     "cal": float(food_item.calories_kcal) / 100
                 }
-                
-                # Classify role based on macro density
-                cal_p = density['p'] * 4
-                cal_c = density['c'] * 4
-                cal_f = density['f'] * 9
-                total_dense = cal_p + cal_c + cal_f
-                
-                role = "mix"
-                if total_dense > 0:
-                    if cal_p > 0.4 * total_dense: role = "protein"
-                    elif cal_c > 0.5 * total_dense: role = "carb"
-                    elif cal_f > 0.5 * total_dense: role = "fat"
-                
-                work_items.append({
-                    "name": food_item.name,
-                    "weight": 100,  # Start with 100g each
-                    "density": density,
-                    "role": role,
-                    "orig_weight": 100
-                })
+                display_name = food_item.name
             else:
                 # Use fallback macros
                 fallback = ingredient_mapper.get_fallback_macros(ing_name)
                 density = {k: v/100 for k, v in fallback.items()}
-                
-                work_items.append({
-                    "name": ing_name,
-                    "weight": 100,
+                display_name = ing_name
+            
+            # Handle beverages differently - fixed size, excluded from optimization
+            if role == "beverage":
+                serving_size = ingredient_mapper.get_beverage_serving_size(ing_name)
+                beverage_items.append({
+                    "name": display_name,
+                    "weight": serving_size,
                     "density": density,
-                    "role": "mix",
-                    "orig_weight": 100
+                    "role": role,
+                    "fixed": True
+                })
+            else:
+                # Start with default weight for the role
+                work_items.append({
+                    "name": display_name,
+                    "weight": constraints["default"],
+                    "density": density,
+                    "role": role,
+                    "constraints": constraints,
+                    "scalable": constraints["scalable"]
                 })
         
-        if not work_items:
+        if not work_items and not beverage_items:
             calculated_meals.append(_fallback_meal_calculation(meal, m_target_cal, m_target_p, m_target_c, m_target_f))
             continue
         
-        # Step 3: Iterative Optimization (same algorithm as optimize_meal_portions_iterative)
+        # Calculate beverage contributions (fixed, not optimized)
+        bev_cal = bev_p = bev_c = bev_f = 0
+        for b in beverage_items:
+            bev_cal += b["weight"] * b["density"]["cal"]
+            bev_p += b["weight"] * b["density"]["p"]
+            bev_c += b["weight"] * b["density"]["c"]
+            bev_f += b["weight"] * b["density"]["f"]
+        
+        # Adjust targets to account for beverage contribution
+        adj_target_cal = m_target_cal - bev_cal
+        adj_target_p = m_target_p - bev_p
+        adj_target_c = m_target_c - bev_c
+        adj_target_f = m_target_f - bev_f
+        
+        # Ensure adjusted targets are positive
+        adj_target_cal = max(adj_target_cal, 100)
+        adj_target_p = max(adj_target_p, 5)
+        adj_target_c = max(adj_target_c, 10)
+        adj_target_f = max(adj_target_f, 5)
+        
+        if beverage_items:
+            print(f"    📢 Beverages fixed: {bev_cal:.0f}kcal | Remaining target: {adj_target_cal:.0f}kcal")
+        
+        # Step 3: Iterative Optimization with ROLE CONSTRAINTS
+        # Only PRIMARY items scale freely; SECONDARY has limited scaling; SIDE is mostly fixed
         iterations = 15
-        learning_rate = 0.15
+        learning_rate = 0.12
         
         for i in range(iterations):
-            # Calculate current totals
+            # Calculate current totals (excluding beverages)
             cur_p = cur_c = cur_f = cur_cal = 0
             for w in work_items:
                 wt = w["weight"]
@@ -706,12 +734,28 @@ def calculate_portions_from_dishes(
             if cur_cal == 0:
                 break
             
-            # Strict calorie normalization
-            cal_scale = m_target_cal / cur_cal
-            for w in work_items:
-                w["weight"] *= cal_scale
+            # Scale to hit calorie target - but only scalable items
+            cal_deficit = adj_target_cal - cur_cal
             
-            # Recalculate after normalization
+            # Distribute deficit proportionally among scalable items
+            scalable_items = [w for w in work_items if w.get("scalable", True)]
+            if scalable_items and abs(cal_deficit) > 10:
+                total_scalable_weight = sum(w["weight"] for w in scalable_items)
+                if total_scalable_weight > 0:
+                    for w in scalable_items:
+                        proportion = w["weight"] / total_scalable_weight
+                        # Calculate additional weight needed from this item
+                        cal_per_g = w["density"]["cal"]
+                        if cal_per_g > 0:
+                            additional_weight = (cal_deficit * proportion) / cal_per_g
+                            w["weight"] += additional_weight * 0.5  # Damped adjustment
+            
+            # Apply role-specific constraints AFTER scaling
+            for w in work_items:
+                constraints = w.get("constraints", {"min": 50, "max": 300})
+                w["weight"] = max(constraints["min"], min(constraints["max"], w["weight"]))
+            
+            # Recalculate after constraint application
             cur_p = cur_c = cur_f = cur_cal = 0
             for w in work_items:
                 wt = w["weight"]
@@ -720,38 +764,47 @@ def calculate_portions_from_dishes(
                 cur_f += wt * w["density"]["f"]
                 cur_cal += wt * w["density"]["cal"]
             
-            # Adjust based on macro deviations
-            if i < iterations - 1:
-                p_dev = (cur_p - m_target_p) / m_target_p if m_target_p > 0 else 0
-                c_dev = (cur_c - m_target_c) / m_target_c if m_target_c > 0 else 0
-                f_dev = (cur_f - m_target_f) / m_target_f if m_target_f > 0 else 0
+            # Macro adjustments (only for scalable items)
+            if i < iterations - 2:
+                p_dev = (cur_p - adj_target_p) / adj_target_p if adj_target_p > 0 else 0
+                c_dev = (cur_c - adj_target_c) / adj_target_c if adj_target_c > 0 else 0
+                f_dev = (cur_f - adj_target_f) / adj_target_f if adj_target_f > 0 else 0
                 
                 for w in work_items:
+                    if not w.get("scalable", True):
+                        continue
+                    
                     role = w["role"]
                     factor = 1.0
                     
-                    if role == "protein":
-                        if p_dev < -0.05: factor += learning_rate
-                        elif p_dev > 0.05: factor -= learning_rate
-                    elif role == "carb":
-                        if c_dev < -0.05: factor += learning_rate
-                        elif c_dev > 0.05: factor -= learning_rate
-                    elif role == "fat":
-                        if f_dev < -0.05: factor += learning_rate
-                        elif f_dev > 0.05: factor -= learning_rate
+                    # PRIMARY items can adjust for all macros
+                    if role == "primary":
+                        if p_dev < -0.05 or c_dev < -0.05:
+                            factor += learning_rate
+                        elif p_dev > 0.05 or c_dev > 0.05:
+                            factor -= learning_rate
+                    # SECONDARY items have limited adjustment
+                    elif role == "secondary":
+                        if p_dev < -0.1:
+                            factor += learning_rate * 0.5
+                        elif p_dev > 0.1:
+                            factor -= learning_rate * 0.5
                     
                     w["weight"] *= factor
-                    if w["weight"] < 10:
-                        w["weight"] = 10
+                    
+                    # Re-apply constraints
+                    constraints = w.get("constraints", {"min": 50, "max": 300})
+                    w["weight"] = max(constraints["min"], min(constraints["max"], w["weight"]))
         
-        # Step 4: Format final output
+        # Step 4: Format final output with human-readable portions
         portion_parts = []
         final_p = final_c = final_f = final_cal = 0
         
+        # First add food items
         for w in work_items:
             final_weight = round(w["weight"] / 5) * 5  # Round to nearest 5g
-            if final_weight < 5:
-                final_weight = 5
+            constraints = w.get("constraints", {"min": 50, "max": 300})
+            final_weight = max(constraints["min"], min(constraints["max"], final_weight))
             
             portion_parts.append(f"{int(final_weight)}g {w['name']}")
             
@@ -759,6 +812,15 @@ def calculate_portions_from_dishes(
             final_c += final_weight * w["density"]["c"]
             final_f += final_weight * w["density"]["f"]
             final_cal += final_weight * w["density"]["cal"]
+        
+        # Then add beverages (with ml notation)
+        for b in beverage_items:
+            portion_parts.append(f"{int(b['weight'])}ml {b['name']}")
+            
+            final_p += b["weight"] * b["density"]["p"]
+            final_c += b["weight"] * b["density"]["c"]
+            final_f += b["weight"] * b["density"]["f"]
+            final_cal += b["weight"] * b["density"]["cal"]
         
         # Build calculated meal
         calculated_meal = meal.copy()
