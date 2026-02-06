@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+venv/
+.venv/
+env/
+.env
+
+# Environment Variables
+.env
+.env.local
+.env.*.local
+
+# Database
+*.sqlite3
+*.db
+!db.sqlite3 # Uncomment if you want to track a default dev dabatase, but generally ignored
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+
+# IDEs
+.vscode/
+.idea/
+*.DS_Store
+
+# Celery Beat
+celerybeat-schedule
+celerybeat-schedule.db
+celerybeat-schedule-shm
+celerybeat-schedule-wal
+tmp/
+celery_beat_data/

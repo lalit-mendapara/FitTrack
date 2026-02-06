@@ -1,0 +1,62 @@
+# =====================================================
+# Diet Planner Backend - Environment Variables
+# =====================================================
+# Copy this file to .env and fill in your values
+# NEVER commit .env to version control!
+# =====================================================
+
+# =====================================================
+# DATABASE
+# =====================================================
+# Local development:
+SQLALCHEMY_DATABASE_URL=postgresql://username:password@localhost:5432/fitness_track
+
+# Docker (use this when running with docker-compose):
+# SQLALCHEMY_DATABASE_URL=postgresql://diet_user:diet_password@postgres:5432/fitness_track
+
+# =====================================================
+# SECURITY
+# =====================================================
+# Generate: python -c "import secrets; print(secrets.token_hex(32))"
+SECRET_KEY=your_secret_key_here
+ALGORITHM=HS256
+
+# =====================================================
+# REDIS (Celery Broker)
+# =====================================================
+# Local development:
+REDIS_URL=redis://localhost:6379/0
+
+# Docker:
+# REDIS_URL=redis://redis:6379/0
+
+# =====================================================
+# QDRANT (Vector Database)
+# =====================================================
+# Local development:
+QDRANT_URL=http://localhost:6333
+
+# Docker:
+# QDRANT_URL=http://qdrant:6333
+
+# Optional API key (leave empty for local without auth)
+# QDRANT_API_KEY=
+
+# =====================================================
+# LLM CONFIGURATION
+# =====================================================
+# Ollama (local or via Docker host)
+OLLAMA_URL=http://localhost:11434
+OLLAMA_API_KEY=your_ollama_api_key
+OLLAMA_MODEL=gpt-oss:120b-cloud
+
+# OpenRouter (alternative)
+# OPENROUTER_API_KEY=your_openrouter_api_key
+
+# =====================================================
+# LANGFUSE (Optional - LLM Observability)
+# =====================================================
+# Leave empty if not using
+LANGFUSE_SECRET_KEY=
+LANGFUSE_PUBLIC_KEY=
+LANGFUSE_HOST=https://us.cloud.langfuse.com

@@ -1,0 +1,176 @@
+# Diet Planner - Docker Compose Configuration
+# Development environment with hot-reload
+
+services:
+  # ============================================
+  # PostgreSQL Database
+  # ============================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: diet_planner_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-diet_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-diet_password}
+      POSTGRES_DB: ${POSTGRES_DB:-fitness_track}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-diet_user} -d ${POSTGRES_DB:-fitness_track}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
+  # Redis (Celery Broker)
+  # ============================================
+  redis:
+    image: redis:7-alpine
+    container_name: diet_planner_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
+  # Qdrant Vector Database
+  # ============================================
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: diet_planner_qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      QDRANT__LOG_LEVEL: INFO
+
+  # ============================================
+  # FastAPI Backend
+  # ============================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: diet_planner_backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount source code for hot-reload
+      - ./backend:/app
+      # Prevent local venv from overriding container packages
+      - /app/venv
+      - /app/venv313
+    environment:
+      # Database
+      SQLALCHEMY_DATABASE_URL: postgresql://${POSTGRES_USER:-diet_user}:${POSTGRES_PASSWORD:-diet_password}@postgres:5432/${POSTGRES_DB:-fitness_track}
+      # Security
+      SECRET_KEY: ${SECRET_KEY}
+      ALGORITHM: ${ALGORITHM:-HS256}
+      # Services
+      REDIS_URL: redis://redis:6379/0
+      QDRANT_URL: http://qdrant:6333
+      # LLM (Ollama running on host machine)
+      OLLAMA_URL: http://host.docker.internal:11434
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-gpt-oss:120b-cloud}
+      # Langfuse (optional)
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-https://us.cloud.langfuse.com}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    # For macOS: Allow access to host.docker.internal
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # ============================================
+  # Celery Worker with Beat Scheduler
+  # ============================================
+  celery:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: diet_planner_celery
+    restart: unless-stopped
+    command: celery -A app.celery_app worker --beat --loglevel=info
+    volumes:
+      - ./backend:/app
+      - /app/venv
+      - /app/venv313
+      - celery_data:/app/celery_beat_data
+    environment:
+      # Database
+      SQLALCHEMY_DATABASE_URL: postgresql://${POSTGRES_USER:-diet_user}:${POSTGRES_PASSWORD:-diet_password}@postgres:5432/${POSTGRES_DB:-fitness_track}
+      # Security
+      SECRET_KEY: ${SECRET_KEY}
+      ALGORITHM: ${ALGORITHM:-HS256}
+      # Services
+      REDIS_URL: redis://redis:6379/0
+      QDRANT_URL: http://qdrant:6333
+      # LLM
+      OLLAMA_URL: http://host.docker.internal:11434
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-gpt-oss:120b-cloud}
+      # Langfuse
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-https://us.cloud.langfuse.com}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # ============================================
+  # React Frontend (Vite Dev Server)
+  # ============================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: diet_planner_frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    volumes:
+      # Mount source code for hot-reload
+      - ./frontend:/app
+      # Prevent local node_modules from overriding container packages
+      - /app/node_modules
+    environment:
+      # Vite will proxy /api requests to backend
+      VITE_API_URL: http://backend:8000
+    depends_on:
+      - backend
+
+# ============================================
+# Persistent Volumes
+# ============================================
+volumes:
+  postgres_data:
+    name: diet_planner_postgres_data
+  redis_data:
+    name: diet_planner_redis_data
+  qdrant_data:
+    name: diet_planner_qdrant_data
+  celery_data:
+    name: diet_planner_celery_data

@@ -1,0 +1,131 @@
+# =====================================================
+# Diet Planner - Git Ignore Configuration
+# =====================================================
+# This file ensures sensitive data and build artifacts
+# are NEVER committed to version control
+# =====================================================
+
+# =====================================================
+# ENVIRONMENT FILES (CRITICAL - NEVER COMMIT)
+# =====================================================
+.env
+.env.local
+.env.docker
+.env.*.local
+*.env
+!.env.docker.example
+!backend/.envexample
+
+# =====================================================
+# PYTHON
+# =====================================================
+# Virtual environments
+venv/
+.venv/
+env/
+venv313/
+
+# Byte-compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+.Python
+
+# Distribution / packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/
+.tox/
+.nox/
+
+# Celery
+celerybeat-schedule
+celerybeat-schedule.*
+celery_beat_data/
+
+# =====================================================
+# NODE.JS / FRONTEND
+# =====================================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build output
+frontend/dist/
+frontend/build/
+
+# =====================================================
+# DATABASES
+# =====================================================
+*.db
+*.sqlite3
+*.sqlite
+
+# Vector database storage (can be regenerated)
+qdrant_storage/
+
+# =====================================================
+# IDE / EDITORS
+# =====================================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-workspace
+*.sublime-project
+
+# =====================================================
+# OPERATING SYSTEM
+# =====================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# =====================================================
+# LOGS
+# =====================================================
+*.log
+logs/
+*.log.*
+
+# =====================================================
+# DOCKER (Optional - exclude volumes and temp files)
+# =====================================================
+# Uncomment if you want to exclude Docker volumes
+# docker-compose.override.yml
+
+# =====================================================
+# MISCELLANEOUS
+# =====================================================
+tmp/
+temp/
+*.tmp
+*.bak
+*.backup
+
+# Uploaded files (if storing locally during dev)
+uploaded_image_*.png
+uploaded_image_*.jpg
