@@ -71,59 +71,125 @@ diet_planner_3/
 
 ---
 
-## 🐳 Quick Start with Docker (Recommended)
+## �️ Complete Setup Guide
 
-### Prerequisites
-*   [Docker](https://docs.docker.com/get-docker/) and Docker Compose
-*   [Ollama](https://ollama.ai/) running on your machine (for AI features)
+This guide covers everything you need to run this project locally. Choose either **Docker (Recommended)** or **Manual Setup**.
 
-### Setup Steps
+---
 
-1.  **Clone the repository**
-    ```bash
-    git clone https://github.com/YOUR_USERNAME/diet_planner_3.git
-    cd diet_planner_3
-    ```
+## 📋 System Requirements
 
-2.  **Create environment file**
-    ```bash
-    cp .env.docker.example .env.docker
-    ```
+Before starting, ensure you have these installed:
 
-3.  **Edit `.env.docker`** with your credentials:
-    ```bash
-    # Required
-    POSTGRES_PASSWORD=your_secure_database_password
-    SECRET_KEY=your_jwt_secret_key
-    OLLAMA_API_KEY=your_ollama_api_key
-    
-    # Optional (for LLM observability)
-    LANGFUSE_SECRET_KEY=your_langfuse_secret
-    LANGFUSE_PUBLIC_KEY=your_langfuse_public
-    ```
+| Requirement | Version | How to Check | Installation |
+|-------------|---------|--------------|--------------|
+| **Docker** | 20.10+ | `docker --version` | [Get Docker](https://docs.docker.com/get-docker/) |
+| **Docker Compose** | 2.0+ | `docker-compose --version` | Included with Docker Desktop |
+| **Ollama** | Latest | `ollama --version` | [Get Ollama](https://ollama.ai/) |
+| **Node.js** (local only) | 18+ | `node --version` | [Get Node.js](https://nodejs.org/) |
+| **Python** (local only) | 3.10+ | `python --version` | [Get Python](https://python.org/) |
+| **PostgreSQL** (local only) | 14+ | `psql --version` | [Get PostgreSQL](https://postgresql.org/) |
 
-4.  **Start Ollama** (on your host machine)
-    ```bash
-    ollama serve
-    ```
+---
 
-5.  **Start all services**
-    ```bash
-    docker-compose --env-file .env.docker up -d
-    ```
+## 🐳 Option 1: Docker Setup (Recommended)
 
-6.  **Access the application**
-    *   Frontend: http://localhost:5173
-    *   Backend API: http://localhost:8000
-    *   API Docs: http://localhost:8000/docs
+Docker automatically sets up PostgreSQL, Redis, Qdrant, Backend, Celery, and Frontend.
 
-### Docker Commands
+### Step 1: Clone the Repository
+```bash
+git clone https://github.com/YOUR_USERNAME/diet_planner_3.git
+cd diet_planner_3
+```
+
+### Step 2: Create Environment File
+```bash
+cp .env.docker.example .env.docker
+```
+
+### Step 3: Configure Environment Variables
+
+Edit `.env.docker` with your values:
 
 ```bash
-# Start all services
+# 📝 Open the file
+nano .env.docker  # or use any text editor
+```
+
+**Required variables to update:**
+
+```env
+# Database (you can keep defaults or customize)
+POSTGRES_USER=diet_user
+POSTGRES_PASSWORD=your_strong_password_here
+POSTGRES_DB=fitness_track
+
+# Security - MUST CHANGE! Generate with: python -c "import secrets; print(secrets.token_hex(32))"
+SECRET_KEY=your_64_character_random_string_here
+
+# LLM - Your Ollama API key
+OLLAMA_API_KEY=your_ollama_api_key
+OLLAMA_MODEL=gpt-oss:120b-cloud  # or your preferred model
+```
+
+### Step 4: Start Ollama
+
+> ⚠️ **Important**: Ollama must run on your **host machine** (not inside Docker).
+
+```bash
+# Terminal 1: Start Ollama server
+ollama serve
+
+# Terminal 2: Pull a model (if not already done)
+ollama pull llama3.2  # or your preferred model
+```
+
+### Step 5: Start Docker Services
+
+```bash
+# Start all containers
 docker-compose --env-file .env.docker up -d
 
-# View logs
+# Wait ~30 seconds for all services to initialize, then check health
+docker-compose ps
+```
+
+**Expected output:**
+```
+NAME                      STATUS              PORTS
+diet_planner_backend      Up (healthy)        0.0.0.0:8000->8000/tcp
+diet_planner_celery       Up                  ---
+diet_planner_db           Up (healthy)        0.0.0.0:5433->5432/tcp
+diet_planner_frontend     Up                  0.0.0.0:5173->5173/tcp
+diet_planner_qdrant       Up                  0.0.0.0:6333->6333/tcp
+diet_planner_redis        Up (healthy)        0.0.0.0:6379->6379/tcp
+```
+
+### Step 6: Initialize Database (First Time Only)
+
+```bash
+# Apply database migrations (run inside backend container)
+docker exec -it diet_planner_backend alembic upgrade head
+```
+
+### Step 7: Access the Application
+
+| Service | URL |
+|---------|-----|
+| 🌐 **Frontend** | http://localhost:5173 |
+| 🔧 **Backend API** | http://localhost:8000 |
+| 📚 **API Docs (Swagger)** | http://localhost:8000/docs |
+| 🔍 **Qdrant Dashboard** | http://localhost:6333/dashboard |
+
+---
+
+### Docker Commands Reference
+
+```bash
+# Start all services (detached)
+docker-compose --env-file .env.docker up -d
+
+# View all logs
 docker-compose logs -f
 
 # View specific service logs
@@ -132,80 +198,198 @@ docker-compose logs -f backend
 # Stop all services
 docker-compose down
 
-# Stop and remove volumes (fresh start)
+# Stop and remove all data (fresh start)
 docker-compose down -v
 
 # Rebuild after code changes
-docker-compose build --no-cache
-docker-compose up -d
+docker-compose build --no-cache && docker-compose --env-file .env.docker up -d
+
+# Enter backend container shell
+docker exec -it diet_planner_backend bash
+
+# Check backend health
+curl http://localhost:8000/health
 ```
 
 ---
 
-## 💻 Local Development Setup (Without Docker)
+## 💻 Option 2: Manual Local Setup (Without Docker)
 
-### Prerequisites
-*   Node.js (v18+)
-*   Python (v3.10+)
-*   PostgreSQL
-*   Redis
-*   Ollama
+For local development with more control over each service.
 
-### Backend Setup
-1.  Navigate to `backend`:
-    ```bash
-    cd backend
-    ```
-2.  Create and activate virtual environment:
-    ```bash
-    python -m venv venv
-    source venv/bin/activate  # Windows: venv\Scripts\activate
-    ```
-3.  Install dependencies:
-    ```bash
-    pip install -r requirements.txt
-    ```
-4.  Create `.env` file:
-    ```bash
-    cp .envexample .env
-    # Edit .env with your local database credentials
-    ```
-5.  Run the server:
-    ```bash
-    uvicorn app.main:app --reload
-    ```
-    *Server runs at `http://localhost:8000`*
+### Step 1: Install External Services
 
-### Frontend Setup
-1.  Navigate to `frontend`:
-    ```bash
-    cd frontend
-    ```
-2.  Install dependencies:
-    ```bash
-    npm install
-    ```
-3.  Start development server:
-    ```bash
-    npm run dev
-    ```
-    *App runs at `http://localhost:5173`*
+You need to install and run these services:
 
-### Celery Worker (Background Tasks)
+#### PostgreSQL
+```bash
+# macOS
+brew install postgresql@16
+brew services start postgresql@16
+
+# Create database
+createdb fitness_track
+```
+
+#### Redis
+```bash
+# macOS
+brew install redis
+brew services start redis
+```
+
+#### Qdrant
+```bash
+# Option A: Docker (even for local development)
+docker run -d -p 6333:6333 -p 6334:6334 qdrant/qdrant
+
+# Option B: Download binary from https://qdrant.tech/
+```
+
+#### Ollama
+```bash
+# Download from https://ollama.ai/
+# Then start:
+ollama serve
+```
+
+### Step 2: Backend Setup
+
+```bash
+# Navigate to backend
+cd backend
+
+# Create virtual environment
+python -m venv venv
+
+# Activate (macOS/Linux)
+source venv/bin/activate
+
+# Activate (Windows)
+# venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+### Step 3: Configure Backend Environment
+
+```bash
+# Create .env file
+cp .envexample .env
+```
+
+Edit `backend/.env`:
+```env
+# Database (local PostgreSQL)
+SQLALCHEMY_DATABASE_URL=postgresql://your_username:your_password@localhost:5432/fitness_track
+
+# Security
+SECRET_KEY=your_secret_key_generate_with_python_secrets
+ALGORITHM=HS256
+
+# Redis (local)
+REDIS_URL=redis://localhost:6379/0
+
+# Qdrant (local)
+QDRANT_URL=http://localhost:6333
+
+# Ollama (local)
+OLLAMA_URL=http://localhost:11434
+OLLAMA_API_KEY=your_ollama_api_key
+OLLAMA_MODEL=llama3.2
+```
+
+### Step 4: Initialize Database
+
 ```bash
 cd backend
+
+# Run Alembic migrations
+alembic upgrade head
+```
+
+### Step 5: Start Backend Server
+
+```bash
+cd backend
+source venv/bin/activate
+
+# Start FastAPI with hot-reload
+uvicorn app.main:app --reload --port 8000
+```
+
+### Step 6: Start Celery Worker (New Terminal)
+
+```bash
+cd backend
+source venv/bin/activate
+
+# Start Celery with beat scheduler
 celery -A app.celery_app worker --beat --loglevel=info
 ```
 
+### Step 7: Frontend Setup (New Terminal)
+
+```bash
+# Navigate to frontend
+cd frontend
+
+# Install Node dependencies
+npm install
+
+# Start Vite dev server
+npm run dev
+```
+
+### Step 8: Access the Application
+
+Same URLs as Docker setup:
+- Frontend: http://localhost:5173
+- Backend API: http://localhost:8000
+- API Docs: http://localhost:8000/docs
+
 ---
 
-## 🔒 Security Best Practices
+## 🔥 Troubleshooting
 
-*   **Password Hashing**: Never storing plain-text passwords.
-*   **JWT Expiration**: Access tokens expire after a set time (e.g., 24 hours).
-*   **CORS Protection**: API configured to allow specific origins.
-*   **Protected Routes**: Frontend redirects unauthenticated users away from private pages.
-*   **Environment Variables**: All secrets stored in `.env` files (never committed to Git).
+### Common Issues
+
+| Problem | Solution |
+|---------|----------|
+| **Port already in use** | Kill the process: `lsof -ti:8000 \| xargs kill -9` |
+| **Database connection refused** | Ensure PostgreSQL is running: `brew services start postgresql` |
+| **Ollama not responding** | Check if Ollama is running: `curl http://localhost:11434` |
+| **Docker containers unhealthy** | Check logs: `docker-compose logs -f postgres` |
+| **CORS errors** | Backend may not be running or CORS misconfigured |
+
+### Verifying Services
+
+```bash
+# Check PostgreSQL
+psql -U your_username -d fitness_track -c "\dt"
+
+# Check Redis
+redis-cli ping  # Should return PONG
+
+# Check Qdrant
+curl http://localhost:6333/collections
+
+# Check Ollama
+curl http://localhost:11434/api/version
+
+# Check Backend
+curl http://localhost:8000/health
+```
+
+---
+
+## 🔐 Security Best Practices
+
+- **Never commit `.env` files** - They're in `.gitignore`
+- **Generate strong SECRET_KEY** - Use `python -c "import secrets; print(secrets.token_hex(32))"`
+- **Use unique database passwords** - Don't use defaults in production
+- **CORS is configured** - Only allows specified origins
 
 ---
 
