@@ -129,3 +129,6 @@ temp/
 # Uploaded files (if storing locally during dev)
 uploaded_image_*.png
 uploaded_image_*.jpg
+
+# backup
+backup.sql

@@ -3,6 +3,7 @@ venv/
 .venv/
 env/
 venv313/
+venv_test/
 
 # Python cache
 __pycache__/

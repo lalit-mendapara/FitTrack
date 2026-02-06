@@ -2,7 +2,7 @@ import os
 from dotenv import load_dotenv
 
 # Force reload of .env file
-load_dotenv(override=True)
+load_dotenv(override=False)
 
 SQLALCHEMY_DATABASE_URL = os.getenv("SQLALCHEMY_DATABASE_URL")
 SECRET_KEY = os.getenv("SECRET_KEY")  # Use a strong random string

@@ -91,6 +91,6 @@ from celery.schedules import crontab
 celery_app.conf.beat_schedule = {
     'check-hourly-9:45am': {
         'task': 'app.tasks.scheduler.generate_daily_plans_scheduler',
-        'schedule': crontab(minute=45)  # Run every hour
+        'schedule': crontab(minute=59)  # Run every hour
     },
 }
