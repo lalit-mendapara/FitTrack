@@ -510,6 +510,7 @@ def get_weekly_diet_overview(
 
 @router.get("/weekly-workout", status_code=status.HTTP_200_OK)
 def get_weekly_workout_overview(
+    week_offset: int = 0,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -533,10 +534,13 @@ def get_weekly_workout_overview(
     from app.models.workout_plan import WorkoutPlan
     from app.models.user_profile import UserProfile
 
-    # 1. Determine Current Week Range (Monday to Sunday)
+    # 1. Determine Week Range (Monday to Sunday) with Offset
     today = DateType.today()
     # weekday(): Mon=0, Sun=6
-    start_of_week = today - timedelta(days=today.weekday())
+    current_week_start = today - timedelta(days=today.weekday())
+    
+    # Apply offset
+    start_of_week = current_week_start + timedelta(weeks=week_offset)
     end_of_week = start_of_week + timedelta(days=6)
 
     # 2. Query Logs for this week
@@ -630,6 +634,7 @@ def get_weekly_workout_overview(
 
 @router.get("/weekly-goals", status_code=status.HTTP_200_OK)
 def get_weekly_goals(
+    week_offset: int = 0,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -641,9 +646,11 @@ def get_weekly_goals(
     from app.models.workout_plan import WorkoutPlan
     from app.models.user_profile import UserProfile
 
-    # 1. Determine Week Range
+    # 1. Determine Week Range with Offset
     today = DateType.today()
-    start_of_week = today - timedelta(days=today.weekday())
+    current_week_start = today - timedelta(days=today.weekday())
+    
+    start_of_week = current_week_start + timedelta(weeks=week_offset)
     end_of_week = start_of_week + timedelta(days=6)
 
     # 2. Get Targets

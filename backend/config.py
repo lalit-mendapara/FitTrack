@@ -20,6 +20,7 @@ LLM_MODEL = os.getenv("LLM_MODEL") # Optional override
 QDRANT_URL = os.getenv("QDRANT_URL")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+USDA_API_KEY = os.getenv("USDA_API_KEY")
 
 print("--- CONFIG DEBUG ---")
 print(f"QDRANT_URL: '{QDRANT_URL}'")

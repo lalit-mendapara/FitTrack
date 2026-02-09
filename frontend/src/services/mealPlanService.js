@@ -16,3 +16,8 @@ export const generateMealPlan = async (customPrompt = null) => {
     const response = await api.post('/meal-plans/', payload);
     return response.data;
 };
+
+export const regenerateMealPlan = async () => {
+    const response = await api.post('/meal-plans/regenerate');
+    return response.data;
+};

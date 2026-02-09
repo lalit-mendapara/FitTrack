@@ -3,14 +3,17 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 
 import api from '../../api/axios';
 import { Dumbbell, Flame, Timer, CalendarDays } from 'lucide-react';
 
-const WeeklyWorkoutOverview = () => {
+const WeeklyWorkoutOverview = ({ weekOffset = 0 }) => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const response = await api.get('/tracking/weekly-workout');
+        setLoading(true);
+        const response = await api.get('/tracking/weekly-workout', {
+            params: { week_offset: weekOffset }
+        });
         setData(response.data);
       } catch (error) {
         console.error("Failed to fetch weekly workout data", error);
@@ -19,7 +22,7 @@ const WeeklyWorkoutOverview = () => {
       }
     };
     fetchData();
-  }, []);
+  }, [weekOffset]);
 
   if (loading) return <div className="h-64 animate-pulse bg-gray-100 rounded-xl" />;
   

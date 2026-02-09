@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Apple, Clock, Flame, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
+import { Apple, Clock, Flame, Loader2, ChevronDown, ChevronRight, Calendar, ChevronLeft } from 'lucide-react';
 import { getDailyDietLogs } from '../../api/tracking';
 
 const TodayDietLog = ({ onDataLoaded }) => {
@@ -7,6 +7,11 @@ const TodayDietLog = ({ onDataLoaded }) => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [isExpanded, setIsExpanded] = useState(true);
+    
+    // Date Selection State
+    const getTodayStr = () => new Date().toISOString().split('T')[0];
+    const [selectedDate, setSelectedDate] = useState(getTodayStr());
+    const dateInputRef = React.useRef(null);
 
     useEffect(() => {
         // Default to collapsed on mobile (< 768px), expanded on desktop
@@ -20,21 +25,14 @@ const TodayDietLog = ({ onDataLoaded }) => {
 
         // Set initial state
         handleResize();
-
-        // Optional: Listen for resize events if we want it to react dynamically
-        // window.addEventListener('resize', handleResize);
-        // return () => window.removeEventListener('resize', handleResize);
-        
-        // Note: For now, setting it once on mount is often better UX than auto-collapsing 
-        // if the user accidentally resizes the window, but "mobile screen" usually implies 
-        // initial load. I'll stick to initial load to avoid jarring layout shifts.
     }, []);
 
     useEffect(() => {
         const fetchDietLogs = async () => {
             try {
                 setLoading(true);
-                const data = await getDailyDietLogs();
+                // Pass selectedDate to API
+                const data = await getDailyDietLogs(selectedDate);
                 setMeals(data.meals || []);
                 // Pass calories target up to parent (DashboardOverview)
                 if (onDataLoaded) {
@@ -52,7 +50,7 @@ const TodayDietLog = ({ onDataLoaded }) => {
         };
 
         fetchDietLogs();
-    }, [onDataLoaded]);
+    }, [onDataLoaded, selectedDate]); // Add selectedDate dependency
 
     const totalCalories = meals.reduce((sum, meal) => sum + (meal.calories || 0), 0);
 
@@ -71,28 +69,86 @@ const TodayDietLog = ({ onDataLoaded }) => {
         );
     }
 
+    // Generate Header Text
+    const todayStr = getTodayStr();
+    const isToday = selectedDate === todayStr;
+    
+    // Format selected date for display (e.g., "Feb 09")
+    const dateDisplay = new Date(selectedDate).toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
+    
+    const headerTitle = isToday ? "Today's Diet Log" : `${dateDisplay} Diet Log`;
+    const subTitle = isToday ? "Logged meals for today" : `Logged meals for ${dateDisplay}`;
+
+    const handlePrevDay = (e) => {
+        e.stopPropagation();
+        const prev = new Date(selectedDate);
+        prev.setDate(prev.getDate() - 1);
+        setSelectedDate(prev.toISOString().split('T')[0]);
+    };
+
+    const handleNextDay = (e) => {
+        e.stopPropagation();
+        const next = new Date(selectedDate);
+        next.setDate(next.getDate() + 1);
+        const nextStr = next.toISOString().split('T')[0];
+        if (nextStr <= todayStr) {
+            setSelectedDate(nextStr);
+        }
+    };
+
     return (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 h-full transition-all duration-300">
             <div 
-                className="flex items-center justify-between mb-5 md:cursor-default cursor-pointer"
-                onClick={() => {
-                    if (window.innerWidth < 768) {
-                        setIsExpanded(!isExpanded);
-                    }
-                }}
+                className="flex items-center justify-between mb-5"
             >
                 <div className="flex items-center gap-3">
-                    <div className="p-2.5 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl text-white shadow-lg shadow-emerald-200">
+                    <div 
+                        className="p-2.5 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl text-white shadow-lg shadow-emerald-200 cursor-pointer"
+                        onClick={() => {
+                            if (window.innerWidth < 768) setIsExpanded(!isExpanded);
+                        }}
+                    >
                         <Apple size={22} />
                     </div>
-                    <div>
-                        <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                            Today's Diet Log
-                        </h3>
-                        <p className="text-xs text-gray-500 font-medium">Logged meals for today</p>
+                    
+                    <div className="flex items-center gap-2">
+                        {/* Left Arrow */}
+                        <button 
+                            onClick={handlePrevDay}
+                            className="p-1 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-600 transition-colors"
+                        >
+                            <ChevronLeft size={20} />
+                        </button>
+
+                        <div className="relative group cursor-pointer" onClick={() => dateInputRef.current?.showPicker()}>
+                            <div>
+                                <h3 className="text-lg font-bold text-gray-900 leading-tight">
+                                    {headerTitle}
+                                </h3>
+                                <p className="text-xs text-gray-500 font-medium">{subTitle}</p>
+                            </div>
+                            <input 
+                                type="date"
+                                ref={dateInputRef}
+                                value={selectedDate}
+                                max={todayStr}
+                                onChange={(e) => setSelectedDate(e.target.value)}
+                                className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                            />
+                        </div>
+
+                        {/* Right Arrow */}
+                        <button 
+                            onClick={handleNextDay}
+                            disabled={isToday}
+                            className={`p-1 rounded-full text-gray-400 transition-colors ${isToday ? 'opacity-30 cursor-not-allowed' : 'hover:bg-gray-100 hover:text-gray-600'}`}
+                        >
+                            <ChevronRight size={20} />
+                        </button>
                     </div>
                 </div>
-                <div className="flex items-center gap-4">
+                
+                <div className="flex items-center gap-3 sm:gap-4">
                     <div className="text-right hidden sm:block">
                         <span className="text-2xl font-black text-emerald-600">{Math.round(totalCalories)}</span>
                         <p className="text-xs text-gray-400 font-semibold">kcal logged</p>
@@ -104,7 +160,10 @@ const TodayDietLog = ({ onDataLoaded }) => {
                              <span className="text-xs text-emerald-600 ml-1">kcal</span>
                         </div>
                     )}
-                    <div className="p-1 rounded-full hover:bg-gray-100 transition-colors md:hidden">
+                    <div 
+                        className="p-1 rounded-full hover:bg-gray-100 transition-colors md:hidden cursor-pointer"
+                        onClick={() => setIsExpanded(!isExpanded)}
+                    >
                         {isExpanded ? <ChevronDown size={20} className="text-gray-400" /> : <ChevronRight size={20} className="text-gray-400" />}
                     </div>
                 </div>
@@ -153,7 +212,7 @@ const TodayDietLog = ({ onDataLoaded }) => {
                     {meals.length === 0 && !error && (
                         <div className="text-center py-8 text-gray-400">
                             <Apple size={40} className="mx-auto mb-3 opacity-30" />
-                            <p className="font-medium">No meals logged yet today</p>
+                            <p className="font-medium">No meals logged for {isToday ? 'today' : dateDisplay}</p>
                         </div>
                     )}
 

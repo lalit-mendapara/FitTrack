@@ -16,6 +16,9 @@ const DashboardOverview = ({ hasDietPlan, hasWorkoutPlan }) => {
     const [workoutData, setWorkoutData] = useState({ totalCalories: 0 });
     const [notifications, setNotifications] = useState([]);
     const [showNotifications, setShowNotifications] = useState(true);
+    
+    // Lifted State for Week Offset (Synchronizes Calendar, Overview, and Goals)
+    const [weekOffset, setWeekOffset] = useState(0); 
 
     // Initial Setup: Timezone & Notifications
     useEffect(() => {
@@ -181,9 +184,9 @@ const DashboardOverview = ({ hasDietPlan, hasWorkoutPlan }) => {
                     actionLink="/dashboard?tab=workout-plan"
                     actionLabel="Generate Plan"
                 >
-                    <WeeklyWorkoutOverview />
+                    <WeeklyWorkoutOverview weekOffset={weekOffset} />
                 </LockOverlay>
-                <WeeklyGoals hasDietPlan={hasDietPlan} hasWorkoutPlan={hasWorkoutPlan} />
+                <WeeklyGoals hasDietPlan={hasDietPlan} hasWorkoutPlan={hasWorkoutPlan} weekOffset={weekOffset} />
             </div>
 
             {/* 8-Week Calendar - Row 4 */}
@@ -193,7 +196,11 @@ const DashboardOverview = ({ hasDietPlan, hasWorkoutPlan }) => {
                 actionLink="/dashboard?tab=workout-plan"
                 actionLabel="Generate Plan"
             >
-                <WorkoutCalendar isLocked={!hasWorkoutPlan} />
+                <WorkoutCalendar 
+                    isLocked={!hasWorkoutPlan} 
+                    currentWeekOffset={weekOffset}
+                    onWeekChange={setWeekOffset}
+                />
             </LockOverlay>
         </div>
     );

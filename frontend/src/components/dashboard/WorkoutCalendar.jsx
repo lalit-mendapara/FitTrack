@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Calendar, ChevronLeft, ChevronRight, Clock, CheckCircle2, Dumbbell } from 'lucide-react';
 import api from '../../api/axios';
 
-const WorkoutCalendar = ({ isLocked = false }) => {
-    const [weekOffset, setWeekOffset] = useState(0);
+const WorkoutCalendar = ({ isLocked = false, currentWeekOffset = 0, onWeekChange }) => {
+    // const [weekOffset, setWeekOffset] = useState(0); // REMOVED local state
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(!isLocked); // Don't load if locked
     const [error, setError] = useState(null);
@@ -30,7 +30,7 @@ const WorkoutCalendar = ({ isLocked = false }) => {
         try {
             setLoading(true);
             const response = await api.get('/tracking/workout-calendar', {
-                params: { week_offset: weekOffset }
+                params: { week_offset: currentWeekOffset }
             });
             setData(response.data);
             setError(null);
@@ -48,15 +48,20 @@ const WorkoutCalendar = ({ isLocked = false }) => {
         } else {
             setData(mockData);
         }
-    }, [weekOffset, isLocked]);
+    }, [currentWeekOffset, isLocked]);
 
     const handlePrevWeek = () => {
-        setWeekOffset((prev) => (prev > 0 ? prev - 1 : 0));
+        if (currentWeek > 1) {
+            onWeekChange((prev) => prev - 1);
+        }
     };
 
     const handleNextWeek = () => {
-        const maxWeeks = data?.total_weeks || 8;
-        setWeekOffset((prev) => (prev < maxWeeks - 1 ? prev + 1 : prev));
+        if (currentWeek >= totalWeeks) {
+            onWeekChange((prev) => prev - (totalWeeks - 1));
+        } else {
+            onWeekChange((prev) => prev + 1);
+        }
     };
 
     const getTypeColor = (type) => {
@@ -109,7 +114,7 @@ const WorkoutCalendar = ({ isLocked = false }) => {
                 <div className="flex items-center justify-between sm:justify-start gap-2 sm:gap-4 bg-slate-50 rounded-xl p-1.5 border border-slate-100 w-full sm:w-auto">
                     <button 
                         onClick={handlePrevWeek}
-                        disabled={loading || weekOffset <= 0}
+                        disabled={loading || currentWeek <= 1} 
                         className="p-2 hover:bg-white hover:shadow-sm rounded-lg transition-all text-slate-500 hover:text-indigo-600 disabled:opacity-50"
                     >
                         <ChevronLeft className="w-4 h-4" />
@@ -128,7 +133,7 @@ const WorkoutCalendar = ({ isLocked = false }) => {
 
                     <button 
                         onClick={handleNextWeek}
-                        disabled={loading || weekOffset >= totalWeeks - 1}
+                        disabled={loading} 
                         className="p-2 hover:bg-white hover:shadow-sm rounded-lg transition-all text-slate-500 hover:text-indigo-600 disabled:opacity-50"
                     >
                         <ChevronRight className="w-4 h-4" />

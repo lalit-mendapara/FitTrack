@@ -140,8 +140,9 @@ OLLAMA_MODEL=gpt-oss:120b-cloud  # or your preferred model
 # Terminal 1: Start Ollama server
 ollama serve
 
-# Terminal 2: Pull a model (if not already done)
-ollama pull llama3.2  # or your preferred model
+# Terminal 2: Pull the Models (Chat + Embeddings)
+ollama pull gpt-oss:120b-cloud
+ollama pull all-minilm
 ```
 
 ### Step 5: Start Docker Services
@@ -168,8 +169,9 @@ diet_planner_redis        Up (healthy)        0.0.0.0:6379->6379/tcp
 ### Step 6: Initialize Database (First Time Only)
 
 ```bash
-# Apply database migrations (run inside backend container)
-docker exec -it diet_planner_backend alembic upgrade head
+# The database tables are automatically created when the backend starts.
+# You do NOT need to run manual migrations.
+# Just ensuring the backend container is healthy is enough.
 ```
 
 ### Step 7: Access the Application
@@ -297,7 +299,7 @@ QDRANT_URL=http://localhost:6333
 # Ollama (local)
 OLLAMA_URL=http://localhost:11434
 OLLAMA_API_KEY=your_ollama_api_key
-OLLAMA_MODEL=llama3.2
+OLLAMA_MODEL=gpt-oss:120b-cloud
 ```
 
 ### Step 4: Initialize Database
@@ -305,8 +307,8 @@ OLLAMA_MODEL=llama3.2
 ```bash
 cd backend
 
-# Run Alembic migrations
-alembic upgrade head
+# The database tables are automatically created on startup.
+# No manual migration command needed.
 ```
 
 ### Step 5: Start Backend Server
@@ -362,6 +364,10 @@ Same URLs as Docker setup:
 | **Ollama not responding** | Check if Ollama is running: `curl http://localhost:11434` |
 | **Docker containers unhealthy** | Check logs: `docker-compose logs -f postgres` |
 | **CORS errors** | Backend may not be running or CORS misconfigured |
+
+### PostgreSQL Issues
+*   **Password Error**: If `POSTGRES_PASSWORD` has special chars (`@`, `:`, `#`), it breaks the connection URL. Use alphanumeric passwords.
+*   **Stale Data**: IF you changed credentials in `.env` *after* first run, delete volumes: `docker-compose down -v`.
 
 ### Verifying Services
 

@@ -1,7 +1,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'react-toastify';
-import { getCurrentMealPlan, generateMealPlan } from '../services/mealPlanService';
+import { getCurrentMealPlan, generateMealPlan, regenerateMealPlan } from '../services/mealPlanService';
 import { getProfile } from '../services/profileService';
 
 export const useDietPlan = (onGenerateStart, onGenerateEnd) => {
@@ -85,6 +85,36 @@ export const useDietPlan = (onGenerateStart, onGenerateEnd) => {
             if (onGenerateEnd) onGenerateEnd();
         }
     };
+    
+    // NEW: Handle regeneration (history-aware)
+    const handleRegenerate = async () => {
+        setGenerating(true);
+        if (onGenerateStart) onGenerateStart();
+        
+        try {
+            await regenerateMealPlan();
+            toast.success("Meal plan regenerated successfully!");
+            setShowProfileUpdateWarning(false);
+            await fetchPlan(); 
+        } catch (err) {
+            console.error("Regeneration failed", err);
+            const msg = err.response?.data?.detail || "Failed to regenerate plan.";
+            toast.error(msg);
+        } finally {
+            setGenerating(false);
+            if (onGenerateEnd) onGenerateEnd();
+        }
+    };
+
+    const isPlanExpired = useCallback(() => {
+        if (!plan || !plan.created_at) return false;
+        
+        // Use user's local time for "today" comparison if possible, but simpler is browser local
+        const planDate = new Date(plan.created_at).toDateString();
+        const today = new Date().toDateString();
+        
+        return planDate !== today;
+    }, [plan]);
 
     return {
         plan,
@@ -92,7 +122,9 @@ export const useDietPlan = (onGenerateStart, onGenerateEnd) => {
         generating,
         error,
         showProfileUpdateWarning,
+        isPlanExpired: isPlanExpired(), 
         handleGenerate,
+        handleRegenerate,
         refreshPlan: fetchPlan
     };
 };

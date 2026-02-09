@@ -32,7 +32,7 @@ def generate_plan_for_user(user_id: int):
         
         # 1. Generate Plan with History-Based Variety
         # Uses last 8 plans to ensure no dish repetition
-        meal_service.regenerate_meal_plan_with_history(db, user_id)
+        meal_service.regenerate_meal_plan(db, user_id)
         
         # 2. Create Notification
         notif = Notification(
@@ -52,11 +52,14 @@ def generate_plan_for_user(user_id: int):
         db.close()
 
 # --- BEAT SCHEDULER TASK ---
+from app.crud import meal_plan as crud_meal_plan
+
 @celery_app.task
 def generate_daily_plans_scheduler():
     """
     Beat task: Runs every hour. 
-    Finds users where local time is 5:00 AM (± buffer) and triggers worker task.
+    Finds users where local time is 9:00 AM (± buffer) and triggers worker task.
+    Skips if a plan for today already exists.
     """
     db: Session = SessionLocal()
     try:
@@ -64,6 +67,7 @@ def generate_daily_plans_scheduler():
         profiles = db.query(UserProfile).all()
         
         triggered_count = 0
+        skipped_count = 0
         
         for profile in profiles:
             user_tz_str = profile.timezone or "UTC"
@@ -71,16 +75,35 @@ def generate_daily_plans_scheduler():
                 tz = pytz.timezone(user_tz_str)
                 user_now = datetime.now(tz)
                 
-                # Check if it is 5 AM (e.g., between 5:00 and 5:59)
-                # Since we run hourly, checking 'hour == 5' is sufficient.
+                # Check if it is 9 AM
                 if user_now.hour == 9:
+                    
+                    # IDEMPOTENCY CHECK:
+                    # Check if user already has a plan for TODAY
+                    current_plan = crud_meal_plan.get_current_meal_plan(db, profile.user_id)
+                    if current_plan and current_plan.created_at:
+                        # Convert DB time (UTC) to User TZ
+                        # Note: SQLAlchemy datetime is usually naive, assumed UTC
+                        created_utc = current_plan.created_at
+                        if created_utc.tzinfo is None:
+                            created_utc = created_utc.replace(tzinfo=pytz.utc)
+                            
+                        # Convert to user local time
+                        created_local = created_utc.astimezone(tz)
+                        
+                        # Compare dates
+                        if created_local.date() == user_now.date():
+                            logger.info(f"User {profile.user_id} already has a plan for today ({user_now.date()}). Skipping.")
+                            skipped_count += 1
+                            continue
+                    
                     generate_plan_for_user.delay(profile.user_id)
                     triggered_count += 1
                     
             except Exception as e:
                 logger.error(f"Error processing timezone for user {profile.user_id}: {e}")
                 
-        logger.info(f"Daily Plan Scheduler ran. Triggered {triggered_count} tasks.")
+        logger.info(f"Daily Plan Scheduler ran. Triggered {triggered_count} tasks. Skipped {skipped_count} (already exist).")
         
     finally:
         db.close()
@@ -89,8 +112,8 @@ def generate_daily_plans_scheduler():
 from celery.schedules import crontab
 
 celery_app.conf.beat_schedule = {
-    'check-hourly-9:45am': {
+    'check-hourly-9am': {
         'task': 'app.tasks.scheduler.generate_daily_plans_scheduler',
-        'schedule': crontab(minute=59)  # Run every hour
+        'schedule': crontab(minute=0)  # Run at top of every hour
     },
 }

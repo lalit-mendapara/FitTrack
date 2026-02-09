@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from app.models.food_item import FoodItem
+from app.services.food_api_service import food_api_service
 
 logger = logging.getLogger(__name__)
 
@@ -238,7 +239,34 @@ def map_ingredients_to_food_items(
             if food_item:
                 match_type = "FUZZY"
                 found_count += 1
-        
+
+        # Strategy 4: USDA API Lookup (New)
+        if not food_item:
+            print(f"    🔎 Searching USDA API for: '{ingredient}'...")
+            try:
+                # Use ingredient as query
+                api_item = food_api_service.get_food_item(ingredient, diet_type or "veg", "ingredient")
+                
+                if api_item:
+                    food_item = api_item
+                    match_type = "USDA-API"
+                    found_count += 1
+                    
+                    # Save to DB for future use
+                    try:
+                        db.add(food_item)
+                        db.commit()
+                        db.refresh(food_item)
+                        print(f"      💾 Saved to DB: {food_item.name} (Source: {food_item.region})")
+                    except Exception as db_err:
+                        db.rollback()
+                        logger.error(f"Failed to save USDA item to DB: {db_err}")
+                else:
+                    print(f"      Running dry... No result from USDA.")
+
+            except Exception as e:
+                logger.error(f"USDA API lookup failed for '{ingredient}': {e}")
+                
         # Log individual match
         log_ingredient_match(ingredient, food_item, match_type)
         

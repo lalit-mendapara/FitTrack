@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Dumbbell, Clock, Flame, Zap, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
+import { Dumbbell, Clock, Flame, Zap, Loader2, ChevronDown, ChevronRight, ChevronLeft } from 'lucide-react';
 import { getDailyWorkoutLogs } from '../../api/tracking';
 import { debounce } from '../../utils/debounce';
 
@@ -8,6 +8,11 @@ const TodayWorkoutLog = ({ onDataLoaded }) => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [isExpanded, setIsExpanded] = useState(true);
+    
+    // Date Selection State
+    const getTodayStr = () => new Date().toISOString().split('T')[0];
+    const [selectedDate, setSelectedDate] = useState(getTodayStr());
+    const dateInputRef = React.useRef(null);
 
     useEffect(() => {
         const handleResize = debounce(() => {
@@ -33,7 +38,8 @@ const TodayWorkoutLog = ({ onDataLoaded }) => {
         const fetchWorkoutLogs = async () => {
             try {
                 setLoading(true);
-                const data = await getDailyWorkoutLogs();
+                // Pass selectedDate to API
+                const data = await getDailyWorkoutLogs(selectedDate);
                 setWorkouts(data.workouts || []);
                 const targetCals = data.target_calories || 0;
                 
@@ -56,7 +62,7 @@ const TodayWorkoutLog = ({ onDataLoaded }) => {
         };
 
         fetchWorkoutLogs();
-    }, [onDataLoaded]);
+    }, [onDataLoaded, selectedDate]); // Add selectedDate dependency
 
     const totalCalories = workouts.reduce((sum, workout) => sum + (workout.calories || 0), 0);
     
@@ -74,28 +80,86 @@ const TodayWorkoutLog = ({ onDataLoaded }) => {
             </div>
         );
     }
+    
+    // Generate Header Text
+    const todayStr = getTodayStr();
+    const isToday = selectedDate === todayStr;
+    
+    // Format selected date for display
+    const dateDisplay = new Date(selectedDate).toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
+    
+    const headerTitle = isToday ? "Today's Workout Log" : `${dateDisplay} Workout Log`;
+    const subTitle = isToday ? "Completed exercises today" : `Completed exercises for ${dateDisplay}`;
+
+    const handlePrevDay = (e) => {
+        e.stopPropagation();
+        const prev = new Date(selectedDate);
+        prev.setDate(prev.getDate() - 1);
+        setSelectedDate(prev.toISOString().split('T')[0]);
+    };
+
+    const handleNextDay = (e) => {
+        e.stopPropagation();
+        const next = new Date(selectedDate);
+        next.setDate(next.getDate() + 1);
+        const nextStr = next.toISOString().split('T')[0];
+        if (nextStr <= todayStr) {
+            setSelectedDate(nextStr);
+        }
+    };
 
     return (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 h-full transition-all duration-300">
             <div 
-                className="flex items-center justify-between mb-5 md:cursor-default cursor-pointer"
-                onClick={() => {
-                    if (window.innerWidth < 768) {
-                        setIsExpanded(!isExpanded);
-                    }
-                }}
+                className="flex items-center justify-between mb-5"
             >
                 <div className="flex items-center gap-3">
-                    <div className="p-2.5 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl text-white shadow-lg shadow-indigo-200">
+                    <div 
+                        className="p-2.5 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl text-white shadow-lg shadow-indigo-200 cursor-pointer"
+                        onClick={() => {
+                            if (window.innerWidth < 768) setIsExpanded(!isExpanded);
+                        }}
+                    >
                         <Dumbbell size={22} />
                     </div>
-                    <div>
-                        <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                            Today's Workout Log
-                        </h3>
-                        <p className="text-xs text-gray-500 font-medium">Completed exercises today</p>
+                    
+                    <div className="flex items-center gap-2">
+                         {/* Left Arrow */}
+                         <button 
+                            onClick={handlePrevDay}
+                            className="p-1 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-600 transition-colors"
+                        >
+                            <ChevronLeft size={20} />
+                        </button>
+
+                        <div className="relative group cursor-pointer" onClick={() => dateInputRef.current?.showPicker()}>
+                             <div>
+                                <h3 className="text-lg font-bold text-gray-900 leading-tight">
+                                    {headerTitle}
+                                </h3>
+                                <p className="text-xs text-gray-500 font-medium">{subTitle}</p>
+                            </div>
+                            <input 
+                                type="date"
+                                ref={dateInputRef}
+                                value={selectedDate}
+                                max={todayStr}
+                                onChange={(e) => setSelectedDate(e.target.value)}
+                                className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                            />
+                        </div>
+
+                        {/* Right Arrow */}
+                        <button 
+                            onClick={handleNextDay}
+                            disabled={isToday}
+                            className={`p-1 rounded-full text-gray-400 transition-colors ${isToday ? 'opacity-30 cursor-not-allowed' : 'hover:bg-gray-100 hover:text-gray-600'}`}
+                        >
+                            <ChevronRight size={20} />
+                        </button>
                     </div>
                 </div>
+                
                 <div className="flex items-center gap-4">
                     <div className="text-right hidden sm:block">
                         <span className="text-2xl font-black text-indigo-600">{Math.round(totalCalories)}</span>
@@ -108,7 +172,10 @@ const TodayWorkoutLog = ({ onDataLoaded }) => {
                              <span className="text-xs text-indigo-600 ml-1">kcal</span>
                         </div>
                     )}
-                    <div className="p-1 rounded-full hover:bg-gray-100 transition-colors md:hidden">
+                    <div 
+                        className="p-1 rounded-full hover:bg-gray-100 transition-colors md:hidden cursor-pointer"
+                        onClick={() => setIsExpanded(!isExpanded)}
+                    >
                         {isExpanded ? <ChevronDown size={20} className="text-gray-400" /> : <ChevronRight size={20} className="text-gray-400" />}
                     </div>
                 </div>
@@ -192,7 +259,7 @@ const TodayWorkoutLog = ({ onDataLoaded }) => {
                         {workouts.length === 0 && !error && (
                             <div className="text-center py-8 text-gray-400 col-span-full">
                                 <Dumbbell size={40} className="mx-auto mb-3 opacity-30" />
-                                <p className="font-medium">No workouts logged yet today</p>
+                                <p className="font-medium">No workouts logged for {isToday ? 'today' : dateDisplay}</p>
                             </div>
                         )}
                         

@@ -155,8 +155,10 @@ const MealCard = ({ meal, loggedMeals, onLogUpdate }) => {
             </div>
 
             <h4 className="text-lg md:text-xl font-bold text-gray-800 mb-2 leading-tight" title={meal.dish_name}>{meal.dish_name.replace(/\(Veg\)|\(Non-Veg\)/g, '').trim()}</h4>
-            <div className="text-sm text-gray-500 flex flex-wrap items-center gap-1 font-medium">
-                Portion: <span className="font-bold text-gray-700 bg-gray-50 px-2 py-0.5 rounded-lg whitespace-normal break-all">{meal.portion_size}</span>
+            <div className="text-sm text-gray-500 font-medium mt-1">
+                Portion: <span className="font-bold text-gray-700">
+                    {meal.portion_size.replace(/,/g, '+').split('+').map(p => p.trim().split(':')[0]).join(' + ')}
+                </span>
             </div>
           </div>
 

@@ -50,6 +50,20 @@ OLLAMA_URL=http://localhost:11434
 OLLAMA_API_KEY=your_ollama_api_key
 OLLAMA_MODEL=gpt-oss:120b-cloud
 
+# =====================================================
+# LLM SELECTION (NEW)
+# =====================================================
+LLM_PROVIDER=ollama
+# LLM_PROVIDER=openrouter
+# LLM_PROVIDER=openai
+LLM_API_KEY=
+LLM_MODEL=
+
+# =====================================================
+# TIMEZONE
+# =====================================================
+TZ=Asia/Kolkata
+
 # OpenRouter (alternative)
 # OPENROUTER_API_KEY=your_openrouter_api_key
 
@@ -60,3 +74,5 @@ OLLAMA_MODEL=gpt-oss:120b-cloud
 LANGFUSE_SECRET_KEY=
 LANGFUSE_PUBLIC_KEY=
 LANGFUSE_HOST=https://us.cloud.langfuse.com
+
+USDA_API_KEY=

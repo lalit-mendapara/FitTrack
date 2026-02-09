@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../api/axios';
 
-const WeeklyGoals = ({ hasDietPlan, hasWorkoutPlan }) => {
+const WeeklyGoals = ({ hasDietPlan, hasWorkoutPlan, weekOffset = 0 }) => {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
 
@@ -10,7 +10,10 @@ const WeeklyGoals = ({ hasDietPlan, hasWorkoutPlan }) => {
              // Only fetch if at least one plan exists to avoid unnecessary 404s/errors
              // content loaded logic handled by parent anyway
             try {
-                const response = await api.get('/tracking/weekly-goals');
+                setLoading(true);
+                const response = await api.get('/tracking/weekly-goals', {
+                    params: { week_offset: weekOffset }
+                });
                 setData(response.data);
             } catch (error) {
                 console.error("Failed to fetch weekly goals", error);
@@ -24,7 +27,7 @@ const WeeklyGoals = ({ hasDietPlan, hasWorkoutPlan }) => {
         } else {
             setLoading(false);
         }
-    }, [hasDietPlan, hasWorkoutPlan]);
+    }, [hasDietPlan, hasWorkoutPlan, weekOffset]);
 
     if (loading) return <div className="h-64 animate-pulse bg-gray-100 rounded-xl" />;
     

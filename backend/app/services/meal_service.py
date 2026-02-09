@@ -661,12 +661,13 @@ def calculate_portions_from_dishes(
                     "f": float(food_item.fat_g) / 100,
                     "cal": float(food_item.calories_kcal) / 100
                 }
-                display_name = food_item.name
+                # Use original name for display, not DB name (e.g. "Upma" not "Semolina")
+                display_name = ing_name.title()
             else:
                 # Use fallback macros
                 fallback = ingredient_mapper.get_fallback_macros(ing_name)
                 density = {k: v/100 for k, v in fallback.items()}
-                display_name = ing_name
+                display_name = ing_name.title()
             
             # Handle beverages differently - fixed size, excluded from optimization
             if role == "beverage":
@@ -806,7 +807,13 @@ def calculate_portions_from_dishes(
             constraints = w.get("constraints", {"min": 50, "max": 300})
             final_weight = max(constraints["min"], min(constraints["max"], final_weight))
             
-            portion_parts.append(f"{int(final_weight)}g {w['name']}")
+            # Clean name: take first part before comma to avoid long USDA descriptions
+            # e.g. "Chicken, breast, raw" -> "Chicken" (or maybe we want "Chicken breast"?)
+            # USDA usually format: "Term, Qualifier, Qualifier". 
+            # Let's take first 2 terms if short, or just first.
+            # actually simplified: just split by comma and take first part.
+            clean_name = w['name'].split(',')[0].strip()
+            portion_parts.append(f"{int(final_weight)}g {clean_name}")
             
             final_p += final_weight * w["density"]["p"]
             final_c += final_weight * w["density"]["c"]
@@ -815,7 +822,8 @@ def calculate_portions_from_dishes(
         
         # Then add beverages (with ml notation)
         for b in beverage_items:
-            portion_parts.append(f"{int(b['weight'])}ml {b['name']}")
+            clean_name = b['name'].split(',')[0].strip()
+            portion_parts.append(f"{int(b['weight'])}ml {clean_name}")
             
             final_p += b["weight"] * b["density"]["p"]
             final_c += b["weight"] * b["density"]["c"]
@@ -824,7 +832,8 @@ def calculate_portions_from_dishes(
         
         # Build calculated meal
         calculated_meal = meal.copy()
-        calculated_meal["portion_size"] = ", ".join(portion_parts)
+        # Use + as separator as requested
+        calculated_meal["portion_size"] = " + ".join(portion_parts)
         calculated_meal["nutrients"] = {
             "p": round(final_p, 1),
             "c": round(final_c, 1),
