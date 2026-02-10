@@ -215,6 +215,51 @@ curl http://localhost:8000/health
 
 ---
 
+### Docker Reset & Database Restoration
+
+If you need to completely reset your Docker environment and restore data from `backup.sql`, follow these manual steps.
+
+#### 1. Remove Existing Containers & Volumes
+This **completely wipes** your Docker database to ensure a clean restore.
+```bash
+docker-compose --env-file .env.docker down -v
+```
+
+#### 2. Start Only the Database
+We need the database running first to accept the backup.
+```bash
+docker-compose --env-file .env.docker up -d postgres
+```
+**Wait about 10-15 seconds** to ensure the database is fully ready to accept connections.
+
+#### 3. Copy Backup File to Container
+Copy your local `backup.sql` into the running database container.
+```bash
+docker cp backup.sql diet_planner_db:/backup.sql
+```
+
+#### 4. Restore the Database
+Execute the restore command inside the container.
+- It might ask for a password, but usually it won't if the container is configured correctly.
+- If errors appear about "role 'lalit' already exists", you can ignore them.
+```bash
+docker exec -it diet_planner_db psql -U lalit -d fitness_track -f /backup.sql
+```
+
+#### 5. Start the Application
+Now that the data is restored, start the backend and other services.
+```bash
+docker-compose --env-file .env.docker up -d
+```
+
+### Creating a New Backup
+If you want to save your current Docker database state to `backup.sql`:
+```bash
+docker exec -t diet_planner_db pg_dump -U lalit -d fitness_track --clean --if-exists > backup.sql
+```
+
+---
+
 ## 💻 Option 2: Manual Local Setup (Without Docker)
 
 For local development with more control over each service.

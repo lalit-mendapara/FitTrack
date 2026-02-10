@@ -58,7 +58,7 @@ from app.crud import meal_plan as crud_meal_plan
 def generate_daily_plans_scheduler():
     """
     Beat task: Runs every hour. 
-    Finds users where local time is 9:00 AM (± buffer) and triggers worker task.
+    Finds users where local time is 5:00 AM (± buffer) and triggers worker task.
     Skips if a plan for today already exists.
     """
     db: Session = SessionLocal()
@@ -75,8 +75,8 @@ def generate_daily_plans_scheduler():
                 tz = pytz.timezone(user_tz_str)
                 user_now = datetime.now(tz)
                 
-                # Check if it is 9 AM
-                if user_now.hour == 9:
+                # Check if it is 5 AM
+                if user_now.hour == 5:
                     
                     # IDEMPOTENCY CHECK:
                     # Check if user already has a plan for TODAY
@@ -112,7 +112,7 @@ def generate_daily_plans_scheduler():
 from celery.schedules import crontab
 
 celery_app.conf.beat_schedule = {
-    'check-hourly-9am': {
+    'check-hourly-5am': {
         'task': 'app.tasks.scheduler.generate_daily_plans_scheduler',
         'schedule': crontab(minute=0)  # Run at top of every hour
     },
