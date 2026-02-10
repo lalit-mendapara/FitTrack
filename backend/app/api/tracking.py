@@ -300,10 +300,21 @@ def get_daily_diet_logs(
     Get all meal logs for the specified date (defaults to today) with calories target.
     """
     from app.models.user_profile import UserProfile
+    from app.crud.meal_plan import get_current_meal_plan
     
-    # Get user's calories target from profile
-    profile = db.query(UserProfile).filter(UserProfile.user_id == current_user.id).first()
-    calories_target = profile.calories if profile else 2000
+    # Get user's calorie target: Prefer Plan Total over Profile Target
+    # This ensures "Remaining" matches the actual plan generated
+    calories_target = 2000 # Default fallback
+    
+    # 1. Try to get from active Meal Plan
+    plan = get_current_meal_plan(db, current_user.id)
+    if plan and plan.daily_generated_totals:
+        calories_target = plan.daily_generated_totals.calories
+    else:
+        # 2. Fallback to Profile Target
+        profile = db.query(UserProfile).filter(UserProfile.user_id == current_user.id).first()
+        if profile:
+            calories_target = profile.calories
     
     meals = db.query(FoodLog).filter(
         FoodLog.user_id == current_user.id,
@@ -432,14 +443,48 @@ def get_weekly_diet_overview(
     from datetime import timedelta
     from sqlalchemy import func, case
     from app.models.user_profile import UserProfile
+    from app.crud.meal_plan import get_current_meal_plan
+    from app.models.meal_plan_history import MealPlanHistory
 
     # 1. Determine Date Range (Last 7 days including today)
     today = DateType.today()
     start_date = today - timedelta(days=6)
     
-    # 2. Get User Plan Target
+    # 2. Fetch Historical Plans (Optimized)
+    # Get all history entries created before or during the week range
+    # We need enough history to find the active plan for the start_date
+    history_records = db.query(MealPlanHistory).filter(
+        MealPlanHistory.user_profile_id == UserProfile.id, # Join needed below or separate query
+        UserProfile.user_id == current_user.id
+    ).order_by(MealPlanHistory.created_at.desc()).all()
+    
+    # Helper to clean/parse nutrients from snapshot
+    def get_calories_from_snapshot(snapshot):
+        if not snapshot: return 0
+        total = 0
+        for item in snapshot:
+            # Item might be dict (if loaded from JSON)
+            if isinstance(item, dict):
+                nuts = item.get('nutrients', {})
+                # nutrients might be a dict or object depending on serialization
+                if isinstance(nuts, dict):
+                    p = float(nuts.get('p', 0))
+                    c = float(nuts.get('c', 0))
+                    f = float(nuts.get('f', 0))
+                    total += (p * 4) + (c * 4) + (f * 9)
+        return int(total)
+
+    # Pre-calculate targets for history entries
+    history_targets = [] 
+    for h in history_records:
+        history_targets.append({
+            "date": h.created_at.date(),
+            "calories": get_calories_from_snapshot(h.meal_plan_snapshot)
+        })
+
+    # Fallback Profile Target
     profile = db.query(UserProfile).filter(UserProfile.user_id == current_user.id).first()
-    daily_target = profile.calories if profile else 2000
+    profile_target = profile.calories if profile else 2000
 
     # 3. Query Logs - Aggregate by Date AND Meal Type
     # We want to pivot or just sum conditionally
@@ -490,12 +535,23 @@ def get_weekly_diet_overview(
         other = total - (bk + ln + dn + sn)
         if other < 0: other = 0 # Floating point safety
 
+        # Calculate Daily Target based on History
+        # Find the most recent plan created ON or BEFORE this current_day
+        day_target = profile_target # Default fallback
+        
+        found_history = False
+        for h in history_targets:
+            if h["date"] <= current_day:
+                day_target = h["calories"]
+                found_history = True
+                break
+        
         weekly_data.append({
             "day": current_day.strftime("%a"), # Mon, Tue...
             "date": current_day.strftime("%d %b"), # 23 Oct
             "full_date": current_day.isoformat(), # 2023-10-23
             "calories": int(total),
-            "target": int(daily_target),
+            "target": int(day_target),
             "calories_breakfast": int(bk),
             "calories_lunch": int(ln),
             "calories_dinner": int(dn),
@@ -503,7 +559,6 @@ def get_weekly_diet_overview(
             "calories_other": int(other)
         })
         current_day += timedelta(days=1)
-    
     
     return weekly_data
 

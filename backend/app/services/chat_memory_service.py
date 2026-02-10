@@ -39,6 +39,17 @@ class ChatMemoryService:
     def get_messages(self) -> List[BaseMessage]:
         return self.history.messages
 
+    def get_last_ai_message(self) -> str:
+        """
+        Retrieves the content of the last message sent by the AI.
+        Returns None if no AI message is found.
+        """
+        messages = self.get_messages()
+        for msg in reversed(messages):
+            if isinstance(msg, AIMessage):
+                return msg.content
+        return None
+
     def _trim_history(self):
         """
         Ensure only the last 5 messages are kept.

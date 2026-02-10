@@ -8,4 +8,5 @@ from app.models.exercise import Exercise
 from app.models.workout_plan import WorkoutPlan
 from app.models.tracking import FoodLog, WorkoutLog
 from app.models.notification import Notification
+from app.models.social_event import SocialEvent
 

@@ -37,6 +37,7 @@ class GraphState(TypedDict):
     
     # Internal Context
     intent_data: Optional[Dict[str, Any]]
+    social_event_data: Optional[Dict[str, Any]]
     historical_context_str: Optional[str]
     user_context: Dict[str, Any]
     food_knowledge: List[Dict[str, Any]]
@@ -128,6 +129,62 @@ class FitnessCoachService:
                     
         except Exception as e:
             print(f"[History Intent] Error: {e}")
+            
+        return None
+
+    def _detect_social_event_intent(self, message: str) -> dict:
+        """
+        Detects if user is planning a future social event (Feast Mode).
+        Triggers: 'party', 'wedding', 'birthday', 'dinner', 'buffet', 'cheat meal'
+        """
+        msg_lower = message.lower()
+        triggers = ["party", "wedding", "birthday", "buffet", "cheat", "dinner", "event", "going out", "big meal"]
+        
+        if not any(t in msg_lower for t in triggers):
+            return None
+            
+        print(f"[Social Intent] Checking intent for: '{message}'")
+        
+        system_prompt = f"""
+        Current Date: {datetime.now().strftime("%Y-%m-%d (%A)")}
+        
+        Task: Analyze if the user is mentioning a FUTURE social event with high calorie intake.
+        If yes, identify the event name and date.
+        
+        Output JSON ONLY:
+        {{
+            "is_social_event": true/false,
+            "event_name": "Wedding" (or null),
+            "event_date": "YYYY-MM-DD" (or null)
+        }}
+        
+        Examples:
+        - "I have a wedding on Saturday" -> {{"is_social_event": true, "event_name": "Wedding", "event_date": "2026-02-14"}}
+        - "Going to a buffet tomorrow" -> {{"is_social_event": true, "event_name": "Buffet", "event_date": "2026-02-11"}}
+        """
+        
+        try:
+            from app.services.llm_service import call_llm_json
+            response = call_llm_json(system_prompt=system_prompt, user_prompt=message, temperature=0.0)
+            
+            if response and response.get('is_social_event') and response.get('event_date'):
+                target_str = response['event_date']
+                try:
+                    event_date = datetime.strptime(target_str, "%Y-%m-%d").date()
+                    # Ensure it's in the future
+                    if event_date <= date.today():
+                         print(f"[Social Intent] Event is not in future: {event_date}")
+                         return None
+                         
+                    print(f"[Social Intent] Detected event: {response['event_name']} on {event_date}")
+                    return {
+                        "event_name": response.get('event_name', 'Social Event'),
+                        "event_date": event_date
+                    }
+                except ValueError:
+                    return None
+        except Exception:
+            pass
             
         return None
 
@@ -289,10 +346,167 @@ class FitnessCoachService:
 
     @observe(name="node_detect_intent")
     async def _node_detect_intent(self, state: GraphState) -> GraphState:
-        """Node: Detects if user is asking about history."""
+        """Node: Detects if user is asking about history or social events."""
         msg = state["user_message"]
-        intent = self._detect_history_intent(msg)
-        return {"intent_data": intent}
+        
+        # 1. Check History Intent
+        history_intent = self._detect_history_intent(msg)
+        if history_intent:
+            return {"intent_data": history_intent, "social_event_data": None}
+            
+        # 2. Check Social Event Intent
+        social_intent = self._detect_social_event_intent(msg)
+        if social_intent:
+            return {"intent_data": None, "social_event_data": social_intent}
+            
+        # 3. Check for Confirmation (Heuristic)
+        # If user says "Yes/Confirm", we need to check if there was a pending proposal.
+        # This requires looking at the LAST AI message from history.
+        # We can do this in the Social Logic node or here. Let's do it here.
+        # Simple heuristic: "confirm", "yes", "do it", "activate"
+        confirm_triggers = ["confirm", "yes", "do it", "activate", "sure", "okay", "go ahead"]
+        if any(t == msg.lower().strip() or t in msg.lower().split() for t in confirm_triggers):
+                 # Check last AI message for "Proposal" context
+             # We need to fetch history here.
+             memory = ChatMemoryService(state["session_id"])
+             last_ai_msg = memory.get_last_ai_message()
+             
+             if last_ai_msg and "Feast Mode Proposal" in last_ai_msg:
+                 # Robust Regex to extract: "**Event**: Dinner (2026-02-14)" or similar
+                 # The format in _node_process_social_event is: > **Event**: {event_name} ({event_date})
+                 import re
+                 # Updated regex to be flexible with bolding and spacing
+                 match = re.search(r"Event\*\*: (.*?) \((\d{4}-\d{2}-\d{2})\)", last_ai_msg)
+                 if not match:
+                      # Try alternative format without bold colon if needed, or stricter
+                      match = re.search(r"Event\*\*:? (.*?) \((\d{4}-\d{2}-\d{2})\)", last_ai_msg)
+                 
+                 if match:
+                     event_name = match.group(1).strip()
+                     event_date_str = match.group(2)
+                     try:
+                         event_date = datetime.strptime(event_date_str, "%Y-%m-%d").date()
+                         return {"intent_data": None, "social_event_data": {
+                             "type": "confirm",
+                             "event_name": event_name,
+                             "event_date": event_date
+                         }}
+                     except:
+                         pass
+
+        return {"intent_data": None, "social_event_data": None}
+
+    @observe(name="node_process_social_event")
+    async def _node_process_social_event(self, state: GraphState) -> GraphState:
+        """Node: Handles Social Event logic (Proposal or Confirmation)."""
+        social_data = state.get("social_event_data")
+        if not social_data:
+            return {}
+            
+        user_id = state["user_id"]
+        from app.services.social_event_service import propose_banking_strategy, create_social_event
+        
+        # Scenario A: Confirmation (Create Event)
+        if social_data.get("type") == "confirm":
+            # Execute Creation
+            event_name = social_data["event_name"]
+            event_date = social_data["event_date"]
+            
+            # Recalculate proposal to get correct numbers (sanity check)
+            proposal = propose_banking_strategy(self.db, user_id, event_date, event_name)
+            
+            if "error" in proposal:
+                 return {"final_response": f"⚠️ Could not activate Feast Mode: {proposal['error']}", "source": "SocialService"}
+            
+            # Persist
+            create_social_event(self.db, user_id, proposal)
+            
+            # Patch Workout
+            workout_patched = False
+            try:
+                from app.services.workout_service import patch_limit_day_workout
+                patch_limit_day_workout(self.db, user_id, event_date)
+                workout_patched = True
+            except Exception as e:
+                print(f"Failed to patch workout: {e}")
+                
+            # --- NEW: Mid-Day Meal Adjustment ---
+            meal_adjust_msg = ""
+            try:
+                # If event starts TODAY (or banking phase starts today), we check for deficit
+                if proposal['daily_deduction'] > 0:
+                     # Calculate NEW effective target for today
+                     # We can fetch this from StatsService or calculate manually
+                     # Effective = Original - Deduction
+                     context = self.stats_service.get_full_user_context(user_id)
+                     # stats_service.get_user_profile already applies deduction if event is active!
+                     # So let's fetch profile again to be sure
+                     profile_data = self.stats_service.get_user_profile(user_id)
+                     new_target = profile_data['caloric_target']
+                     
+                     # Get Completed Meals (from progress)
+                     # progress = self.stats_service.get_user_progress(user_id) 
+                     # Actually, progress doesn't list meal names easily.
+                     # We need to know WHICH meals were eaten.
+                     # Heuristic: Check FoodLogs for today.
+                     from app.models.tracking import FoodLog
+                     today = datetime.now().date()
+                     logs = self.db.query(FoodLog).filter(FoodLog.user_id == user_id, FoodLog.date == today).all()
+                     completed_meals = list(set([l.meal_type.lower() for l in logs]))
+                     
+                     from app.services.meal_service import patch_todays_meal_plan
+                     patch_result = patch_todays_meal_plan(self.db, user_id, new_target, completed_meals)
+                     
+                     if patch_result.get("deficit_cut", 0) > 0:
+                         meal_adjust_msg = (
+                             f"\n\n📉 **Plan Updated**: Since you've already eaten {', '.join(completed_meals).title()}, "
+                             f"I've reduced your remaining meals by **{patch_result['deficit_cut']:.0f} kcal** to keep you on track."
+                         )
+                         # Add detail on changes if few
+                         if patch_result.get("changes"):
+                              changes_list = "\n".join([f"- {c}" for c in patch_result["changes"][:2]])
+                              meal_adjust_msg += f"\n*Adjusted:*\n{changes_list}"
+            except Exception as e:
+                 print(f"Failed to patch meals: {e}")
+            
+            response_msg = (
+                f"✅ **Feast Mode Activated!**\n\n"
+                f"I've set up your **{proposal['total_banked']} kcal buffer** for {proposal['event_name']}.\n"
+                f"Starting today, your daily calorie target is reduced by **{proposal['daily_deduction']} kcal**."
+            )
+            
+            if workout_patched:
+                response_msg += f"\n\n🏋️ I've also updated your workout plan: A **Glycogen Depletion** session is scheduled for {event_date.strftime('%A')} morning!"
+                
+            if meal_adjust_msg:
+                response_msg += meal_adjust_msg
+                
+            return {
+                "final_response": response_msg,
+                "source": "SocialService"
+            }
+            
+        # Scenario B: New Proposal
+        event_name = social_data.get("event_name")
+        event_date = social_data.get("event_date")
+        
+        proposal = propose_banking_strategy(self.db, user_id, event_date, event_name)
+        
+        if "error" in proposal:
+            return {"final_response": f"I see you have an event, but I can't enable Feast Mode: {proposal['error']}", "source": "SocialService"}
+            
+        # Format "Smart Card" Proposal
+        response = (
+            f"> 🍱 **Feast Mode Proposal**\n>\n"
+            f"> **Event**: {event_name} ({event_date})\n"
+            f"> **Goal**: Bank {proposal['total_banked']} kcal\n>\n"
+            f"> 📉 **Strategy**:\n"
+            f"> * Deduct **{proposal['daily_deduction']} kcal/day** (Starts Today)\n"
+            f"> * Add **Leg Day Workout** ({event_date.strftime('%A')} Morning)\n>\n"
+            f"> *Shall I activate this?*"
+        )
+        
+        return {"final_response": response, "source": "SocialService"}
 
     @observe(name="node_fetch_user_context")
     async def _node_fetch_user_context(self, state: GraphState) -> GraphState:
@@ -455,6 +669,7 @@ class FitnessCoachService:
         
         # Add Nodes
         workflow.add_node("detect_intent", self._node_detect_intent)
+        workflow.add_node("process_social_event", self._node_process_social_event)
         workflow.add_node("fetch_user_context", self._node_fetch_user_context)
         workflow.add_node("fetch_history", self._node_fetch_history)
         workflow.add_node("fetch_knowledge", self._node_fetch_knowledge)
@@ -463,11 +678,25 @@ class FitnessCoachService:
         # Define Edges
         workflow.set_entry_point("detect_intent")
         
-        # SEQUENTIAL FLOW
-        # We run all nodes. Each node handles whether it needs to do work or just pass.
-        # This matches the original logic where History + Knowledge + Profile were all aggregated.
+        # CONDITIONAL ROUTING
+        def intent_router(state: GraphState):
+            if state.get("social_event_data"):
+                return "process_social_event"
+            return "fetch_user_context"
+
+        workflow.add_conditional_edges(
+            "detect_intent",
+            intent_router,
+            {
+                "process_social_event": "process_social_event",
+                "fetch_user_context": "fetch_user_context"
+            }
+        )
         
-        workflow.add_edge("detect_intent", "fetch_user_context")
+        # Social Event Path -> END (It generates final response)
+        workflow.add_edge("process_social_event", END)
+        
+        # Standard Path
         workflow.add_edge("fetch_user_context", "fetch_history")
         workflow.add_edge("fetch_history", "fetch_knowledge")
         workflow.add_edge("fetch_knowledge", "generate")

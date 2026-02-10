@@ -9,13 +9,16 @@ import WorkoutCalendar from './WorkoutCalendar';
 import { LayoutDashboard, Sparkles, Target, Flame, Bell, X } from 'lucide-react';
 import { getUnreadNotifications, markNotificationRead } from '../../api/notifications';
 import { updateTimezone } from '../../api/user_profile';
+import { getActiveSocialEvent } from '../../api/socialEventService';
 import LockOverlay from '../common/LockOverlay';
+import FeastModeBanner from './FeastModeBanner';
 
 const DashboardOverview = ({ hasDietPlan, hasWorkoutPlan }) => {
     const [dietData, setDietData] = useState({ caloriesTarget: 0, totalCalories: 0 });
     const [workoutData, setWorkoutData] = useState({ totalCalories: 0 });
     const [notifications, setNotifications] = useState([]);
     const [showNotifications, setShowNotifications] = useState(true);
+    const [socialEvent, setSocialEvent] = useState(null);
     
     // Lifted State for Week Offset (Synchronizes Calendar, Overview, and Goals)
     const [weekOffset, setWeekOffset] = useState(0); 
@@ -34,6 +37,15 @@ const DashboardOverview = ({ hasDietPlan, hasWorkoutPlan }) => {
             }
         };
         fetchNotifications();
+
+        // 3. Fetch Active Social Event (Feast Mode)
+        const fetchSocialEvent = async () => {
+             const event = await getActiveSocialEvent();
+             if (event) {
+                 setSocialEvent(event);
+             }
+        };
+        fetchSocialEvent();
     }, []);
 
     const handleDismissNotification = async (id) => {
@@ -57,6 +69,9 @@ const DashboardOverview = ({ hasDietPlan, hasWorkoutPlan }) => {
 
     return (
         <div className="space-y-6">
+            {/* Feast Mode Banner */}
+            {socialEvent && <FeastModeBanner event={socialEvent} />}
+
             {/* Notifications Banner */}
             {showNotifications && notifications.length > 0 && (
                 <div className="space-y-2">

@@ -28,13 +28,31 @@ class StatsService:
         if not result:
             return None
             
+        # Check for active Social Event (Feast Mode)
+        try:
+            from app.services.social_event_service import get_active_social_event
+            social_event = get_active_social_event(self.db, user_id)
+            
+            calorie_target = result.calories
+            if social_event and social_event.is_active:
+                today = date.today()
+                # Apply deduction if today is a banking day (Start Date <= Today < Event Date)
+                if social_event.start_date <= today < social_event.event_date:
+                    calorie_target -= social_event.daily_deduction
+                # Apply boost if today is the event day
+                elif today == social_event.event_date:
+                    calorie_target += social_event.target_bank_calories
+        except Exception as e:
+            print(f"Error checking social event deduction: {e}")
+            calorie_target = result.calories
+
         return {
             "weight": result.weight,
             "height": result.height,
             "weight_goal": result.weight_goal,
             "fitness_goal": result.fitness_goal,
             "activity_level": result.activity_level,
-            "caloric_target": result.calories,
+            "caloric_target": calorie_target,
             "protein_target": result.protein,
             "carb_target": result.carbs,
             "fat_target": result.fat,

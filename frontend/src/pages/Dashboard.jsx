@@ -50,7 +50,7 @@ const Dashboard = () => {
         if (!loadingProfile && !hasPhysicalProfile && activeSection !== 'update-profile') {
             // Replace history to avoid back-button loops or just set params
             setSearchParams({ tab: 'update-profile' }, { replace: true });
-        } else if (!loadingProfile && hasPhysicalProfile && (hasDietPlan || hasWorkoutPlan) && (!searchParams.get('tab') || searchParams.get('tab') === 'profile')) {
+        } else if (!loadingProfile && hasPhysicalProfile && (hasDietPlan || hasWorkoutPlan) && !searchParams.get('tab')) {
             // New logic: Existing users (with at least one plan) redirect to dashboard overview
              setSearchParams({ tab: 'dashboard-overview' }, { replace: true });
         }

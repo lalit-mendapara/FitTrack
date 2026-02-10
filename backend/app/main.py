@@ -45,6 +45,8 @@ app.include_router(chat.router)
 app.include_router(tracking.router, prefix="/tracking", tags=["Tracking"])
 from app.api import notifications
 app.include_router(notifications.router)
+from app.api import social_events
+app.include_router(social_events.router)
 
 # Root endpoint
 @app.get("/")

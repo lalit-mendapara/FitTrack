@@ -179,7 +179,7 @@ services:
       - /etc/localtime:/etc/localtime:ro
     environment:
       # Vite will proxy /api requests to backend
-      VITE_API_URL: http://backend:8000
+      VITE_API_URL: http://localhost:8000
       TZ: ${TZ}
     depends_on:
       - backend

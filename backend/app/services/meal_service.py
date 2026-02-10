@@ -719,83 +719,115 @@ def calculate_portions_from_dishes(
         
         # Step 3: Iterative Optimization with ROLE CONSTRAINTS
         # Only PRIMARY items scale freely; SECONDARY has limited scaling; SIDE is mostly fixed
-        iterations = 15
-        learning_rate = 0.12
+        # INCREASED ITERATIONS & DYNAMIC RELAXATION for Stricter 5% Compliance
         
-        for i in range(iterations):
-            # Calculate current totals (excluding beverages)
-            cur_p = cur_c = cur_f = cur_cal = 0
-            for w in work_items:
-                wt = w["weight"]
-                cur_p += wt * w["density"]["p"]
-                cur_c += wt * w["density"]["c"]
-                cur_f += wt * w["density"]["f"]
-                cur_cal += wt * w["density"]["cal"]
+        max_iterations = 50
+        learning_rate = 0.15
+        tgt_tolerance = 0.04 # Target 4% internally to safely hit 5%
+        
+        # Dynamic Constraint Relaxation Loop
+        # If we fail to converge, we relax constraints and try again
+        constraint_multipliers = [1.0, 1.2, 1.5, 2.0, 3.0] 
+        
+        best_weights = {w["name"]: w["weight"] for w in work_items}
+        min_error = float('inf')
+        
+        for relaxation in constraint_multipliers:
             
-            if cur_cal == 0:
-                break
-            
-            # Scale to hit calorie target - but only scalable items
-            cal_deficit = adj_target_cal - cur_cal
-            
-            # Distribute deficit proportionally among scalable items
-            scalable_items = [w for w in work_items if w.get("scalable", True)]
-            if scalable_items and abs(cal_deficit) > 10:
-                total_scalable_weight = sum(w["weight"] for w in scalable_items)
-                if total_scalable_weight > 0:
-                    for w in scalable_items:
-                        proportion = w["weight"] / total_scalable_weight
-                        # Calculate additional weight needed from this item
-                        cal_per_g = w["density"]["cal"]
-                        if cal_per_g > 0:
-                            additional_weight = (cal_deficit * proportion) / cal_per_g
-                            w["weight"] += additional_weight * 0.5  # Damped adjustment
-            
-            # Apply role-specific constraints AFTER scaling
-            for w in work_items:
-                constraints = w.get("constraints", {"min": 50, "max": 300})
-                w["weight"] = max(constraints["min"], min(constraints["max"], w["weight"]))
-            
-            # Recalculate after constraint application
-            cur_p = cur_c = cur_f = cur_cal = 0
-            for w in work_items:
-                wt = w["weight"]
-                cur_p += wt * w["density"]["p"]
-                cur_c += wt * w["density"]["c"]
-                cur_f += wt * w["density"]["f"]
-                cur_cal += wt * w["density"]["cal"]
-            
-            # Macro adjustments (only for scalable items)
-            if i < iterations - 2:
-                p_dev = (cur_p - adj_target_p) / adj_target_p if adj_target_p > 0 else 0
-                c_dev = (cur_c - adj_target_c) / adj_target_c if adj_target_c > 0 else 0
-                f_dev = (cur_f - adj_target_f) / adj_target_f if adj_target_f > 0 else 0
-                
+            for i in range(max_iterations):
+                # Calculate current totals (excluding beverages)
+                cur_p = cur_c = cur_f = cur_cal = 0
                 for w in work_items:
-                    if not w.get("scalable", True):
-                        continue
-                    
-                    role = w["role"]
-                    factor = 1.0
-                    
-                    # PRIMARY items can adjust for all macros
-                    if role == "primary":
-                        if p_dev < -0.05 or c_dev < -0.05:
-                            factor += learning_rate
-                        elif p_dev > 0.05 or c_dev > 0.05:
-                            factor -= learning_rate
-                    # SECONDARY items have limited adjustment
-                    elif role == "secondary":
-                        if p_dev < -0.1:
-                            factor += learning_rate * 0.5
-                        elif p_dev > 0.1:
-                            factor -= learning_rate * 0.5
-                    
-                    w["weight"] *= factor
-                    
-                    # Re-apply constraints
-                    constraints = w.get("constraints", {"min": 50, "max": 300})
-                    w["weight"] = max(constraints["min"], min(constraints["max"], w["weight"]))
+                    wt = w["weight"]
+                    cur_p += wt * w["density"]["p"]
+                    cur_c += wt * w["density"]["c"]
+                    cur_f += wt * w["density"]["f"]
+                    cur_cal += wt * w["density"]["cal"]
+                
+                if cur_cal == 0: break
+                
+                # Check Convergence (Strict 5%)
+                # We calculate deviations based on Adjusted Target (which excludes fixed beverages)
+                cal_dev_p = (cur_cal - adj_target_cal) / adj_target_cal if adj_target_cal > 0 else 0
+                p_dev_p = (cur_p - adj_target_p) / adj_target_p if adj_target_p > 0 else 0
+                c_dev_p = (cur_c - adj_target_c) / adj_target_c if adj_target_c > 0 else 0
+                f_dev_p = (cur_f - adj_target_f) / adj_target_f if adj_target_f > 0 else 0
+                
+                # STRICT check: Calorie within 5% AND Macros within 5%
+                if (abs(cal_dev_p) < tgt_tolerance and 
+                    abs(p_dev_p) < tgt_tolerance and 
+                    abs(c_dev_p) < tgt_tolerance and 
+                    abs(f_dev_p) < tgt_tolerance):
+                    # converged!
+                    min_error = 0 # Mark as perfect
+                    break
+                
+                # Track best state
+                total_error = abs(cal_dev_p) + abs(p_dev_p) + abs(c_dev_p) + abs(f_dev_p)
+                if total_error < min_error:
+                    min_error = total_error
+                    best_weights = {w["name"]: w["weight"] for w in work_items}
+
+                # Phase 1: Calorie Scaling (Master Constraint)
+                cal_deficit = adj_target_cal - cur_cal
+                
+                scalable_items = [w for w in work_items if w.get("scalable", True)]
+                if scalable_items:
+                    total_scalable_weight = sum(w["weight"] for w in scalable_items)
+                    if total_scalable_weight > 0:
+                        for w in scalable_items:
+                            proportion = w["weight"] / total_scalable_weight
+                            cal_per_g = w["density"]["cal"]
+                            if cal_per_g > 0:
+                                # Scale to close calorie gap
+                                additional_weight = (cal_deficit * proportion) / cal_per_g
+                                w["weight"] += additional_weight * 0.9
+                
+                # Phase 2: Macro Balancing
+                # Only if calories are somewhat close (within 10%)
+                if abs(cal_dev_p) < 0.10:
+                    for w in work_items:
+                        if not w.get("scalable", True): continue
+                        
+                        role = w["role"]
+                        factor = 1.0
+                        
+                        # PRIMARY: Adjust for biggest deviations
+                        if role == "primary":
+                            if p_dev_p < -tgt_tolerance: factor += learning_rate
+                            elif p_dev_p > tgt_tolerance: factor -= learning_rate
+                            
+                            if c_dev_p < -tgt_tolerance: factor += learning_rate
+                            elif c_dev_p > tgt_tolerance: factor -= learning_rate
+
+                        # SECONDARY: Support role
+                        elif role == "secondary":
+                            if p_dev_p < -tgt_tolerance*2: factor += learning_rate * 0.5
+                            if f_dev_p < -tgt_tolerance*2: factor += learning_rate * 0.5
+                        
+                        w["weight"] *= factor
+
+                # Apply Constraints (Relaxed by outer loop)
+                for w in work_items:
+                    base_constraints = w.get("constraints", {"min": 50, "max": 300})
+                    max_limit = base_constraints["max"] * relaxation
+                    min_limit = base_constraints["min"]
+                    w["weight"] = max(min_limit, min(max_limit, w["weight"]))
+            
+            # End Inner Loop
+            if min_error == 0: break # Converged perfectly
+        
+        # Restore best found weights
+        for w in work_items:
+            if w["name"] in best_weights:
+                w["weight"] = best_weights[w["name"]]
+        
+        # --- PHASE 4: MATH-FIRST ENFORCEMENT ("Anyhow" Mode) ---
+        # Explicitly force the math to line up, overriding previous constraints if needed.
+        _force_macro_compliance(work_items, adj_target_cal, adj_target_p, adj_target_c, adj_target_f)
+        # -------------------------------------------------------
+
+        # Step 4: Format final output with human-readable portions
         
         # Step 4: Format final output with human-readable portions
         portion_parts = []
@@ -1062,6 +1094,191 @@ def _detect_targeted_meals(prompt: str) -> List[str]:
     return targets
 
 
+
+def adjust_portions_to_fix_deviations(db: Session, meals: List[Dict], targets: Dict, deviations: Dict) -> List[Dict]:
+    """
+    Smart Adjustment Logic (Iterative + Scoring):
+    1. Identify 'Locked' metrics (OK status) vs 'Deviating' metrics.
+    2. Adjust portions of specific items to fix deviations WITHOUT breaking locked metrics.
+    3. Uses scoring to select best candidates that maximize fix and minimize side effects.
+    """
+    print("\n[Smart Adjustment] Attempting to fix macro deviations (Iterative)...")
+    
+    adjusted_meals = [m.copy() for m in meals]
+    
+    # Allow multiple passes to converge
+    max_passes = 3
+    
+    for pass_idx in range(max_passes):
+        # 1. Re-Calculate Current State & Deviations
+        current_totals = {"p": 0, "c": 0, "f": 0, "cal": 0}
+        for m in adjusted_meals:
+            # We must recalc from portion_size string to be sure of density/macros
+            parsed = calculate_meal_macros_from_db(db, m["portion_size"])
+            # Update meal nutrients temporarily for tracking
+            m["nutrients"] = {
+                "p": parsed["total_p"],
+                "c": parsed["total_c"],
+                "f": parsed["total_f"],
+                "cal": parsed["total_cal"]
+            }
+            for k in current_totals: current_totals[k] += m["nutrients"][k]
+
+        current_deviations = []
+        locked_metrics = []
+        
+        for metric, target in targets.items():
+            val = current_totals[metric[:1]] if metric != "calories" else current_totals["cal"]
+            diff = val - target
+            pct = (diff / target) * 100 if target > 0 else 0
+            
+            if abs(pct) > 5:
+                current_deviations.append({"metric": metric, "diff": diff, "pct": pct, "target": target})
+            else:
+                locked_metrics.append(metric)
+        
+        if not current_deviations:
+            print("  [Smart Adj] All metrics OK. Converged.")
+            break
+            
+        # Sort deviations by magnitude (Absolute %)
+        current_deviations.sort(key=lambda x: abs(x["pct"]), reverse=True)
+        
+        # Fix the biggest deviation
+        focus = current_deviations[0]
+        metric = focus["metric"]  # 'protein', 'carbs', 'fat', 'calories'
+        deficit = -focus["diff"] # If diff is negative (Low), deficit is positive (Need to add)
+        
+        print(f"  [Pass {pass_idx+1}] Focusing on {metric.upper()} (Deficit: {deficit:.1f}, {focus['pct']:.1f}%)")
+        
+        # Determine Per-Meal Target
+        meal_target = deficit / len(adjusted_meals)
+        
+        for i, meal in enumerate(adjusted_meals):
+            p_str = meal.get("portion_size", "")
+            analysis = calculate_meal_macros_from_db(db, p_str)
+            items = analysis["items"]
+            if not items: continue
+            
+            # Identify Candidates (items that provide the target metric)
+            m_key = metric[:1] if metric != "calories" else "cal"
+            candidates = [x for x in items if x["density"][m_key] > 0]
+            
+            if not candidates: continue
+            
+            # --- CANDIDATE SCORING ---
+            scored_candidates = []
+            for cand in candidates:
+                d = cand["density"]
+                primary_impact = d[m_key]
+                
+                # Base Score: Efficiency
+                score = primary_impact * 10 
+                
+                # Penalties/Bonuses based on SIDE EFFECTS on OTHER deviations
+                for other_dev in current_deviations:
+                    if other_dev["metric"] == metric: continue
+                    
+                    om = other_dev["metric"]
+                    om_key = om[:1] if om != "calories" else "cal"
+                    om_impact = d[om_key]
+                    
+                    # If we are ADDING weight (Deficit > 0):
+                    if deficit > 0:
+                        if other_dev["diff"] < 0: # Other is ALSO LOW
+                             score += om_impact * 5 # Bonus! Helps other low metric
+                        else: # Other is HIGH
+                             score -= om_impact * 20 # Penalty! Worsens high metric
+                    else: # We are REMOVING weight
+                        if other_dev["diff"] > 0: # Other is HIGH
+                            score += om_impact * 5 # Bonus! Helps reduce high metric
+                        else: # Other is LOW
+                            score -= om_impact * 20 # Penalty! Worsens low metric
+
+                scored_candidates.append((score, cand))
+            
+            # Pick best candidate
+            scored_candidates.sort(key=lambda x: x[0], reverse=True)
+            best_cand = scored_candidates[0][1]
+            
+            # Calculate Delta
+            # Dampening factor 0.8 to avoid overshooting
+            needed_change = (meal_target / best_cand["density"][m_key]) * 0.8
+            
+            # Apply Limit (Don't remove more than we have, don't add crazy amounts)
+            old_w = best_cand["weight"]
+            new_w = max(10, old_w + needed_change) # Minimal 10g
+            if new_w > 500: new_w = 500 # Max 500g cap
+            
+            actual_delta = new_w - old_w
+            best_cand["weight"] = new_w
+            
+            # --- CALORIE COMPENSATION ---
+            # Only if Calories are Locked (OK) and we just disrupted them
+            if "calories" in locked_metrics:
+                cal_delta = actual_delta * best_cand["density"]["cal"]
+                if abs(cal_delta) > 10:
+                    needed_offset = -cal_delta
+                    
+                    # Find compensators (items NOT the one we just changed)
+                    compensators = [x for x in items if x["name"] != best_cand["name"]]
+                    if compensators:
+                        # Score Compensators
+                        scored_comps = []
+                        for comp in compensators:
+                            s = 0
+                            cd = comp["density"]
+                            
+                            # Score based on how changing this affects OTHER deviations
+                            for dev in current_deviations:
+                                km = dev["metric"]
+                                k_key = km[:1] if km != "calories" else "cal"
+                                k_imp = cd[k_key]
+                                
+                                if needed_offset > 0: # Adding weight
+                                    if dev["diff"] < 0: s += k_imp * 10
+                                    else: s -= k_imp * 20
+                                else: # Removing weight
+                                    if dev["diff"] > 0: s += k_imp * 10
+                                    else: s -= k_imp * 20
+                            
+                            scored_comps.append((s, comp))
+                        
+                        scored_comps.sort(key=lambda x: x[0], reverse=True)
+                        best_comp = scored_comps[0][1]
+                        
+                        if best_comp["density"]["cal"] > 0:
+                            comp_delta = needed_offset / best_comp["density"]["cal"]
+                            cw = best_comp["weight"] + comp_delta
+                            best_comp["weight"] = max(10, cw)
+
+            # Reconstruct Meal Strings
+            new_parts = []
+            final_nut = {"p": 0, "c": 0, "f": 0, "cal": 0}
+            
+            for item in items:
+                w = item["weight"]
+                qty = round(w / 5) * 5
+                if qty < 5: qty = 5
+                
+                new_parts.append(f"{int(qty)}g {item['name']}")
+                
+                final_nut["p"] += qty * item["density"]["p"]
+                final_nut["c"] += qty * item["density"]["c"]
+                final_nut["f"] += qty * item["density"]["f"]
+                final_nut["cal"] += qty * item["density"]["cal"]
+                
+            new_meal = meal.copy()
+            new_meal["portion_size"] = " + ".join(new_parts)
+            new_meal["nutrients"] = {k: round(v, 1) for k, v in final_nut.items()}
+            new_meal["nutrients"]["cal"] = round(final_nut["cal"]) # int for calories
+            
+            adjusted_meals[i] = new_meal
+            
+    return adjusted_meals
+
+
+
 def _detect_update_type(prompt: str) -> dict:
     """
     Detect what type of update the user is requesting.
@@ -1131,7 +1348,8 @@ def generate_meal_plan(db: Session, user_id: int, custom_prompt: str = None, exc
     age = getattr(profile.user, 'age', 25) if profile.user else 25
     gender = getattr(profile.user, 'gender', 'male') if profile.user else 'male'
     
-    targets = nutrition_service.calculate_daily_targets(
+    # A. Calculate BASELINE Targets (Maintenance/Goal)
+    base_targets = nutrition_service.calculate_daily_targets(
         weight=profile.weight,
         height=profile.height,
         age=age,
@@ -1142,13 +1360,31 @@ def generate_meal_plan(db: Session, user_id: int, custom_prompt: str = None, exc
         weight_goal=profile.weight_goal
     )
     
-    # Update profile in DB with new targets
+    # B. Get EFFECTIVE Targets (Buffer/Feast Adjustments)
+    from app.services.social_event_service import get_effective_daily_targets
+    import datetime
+    
+    targets = get_effective_daily_targets(
+        db, user_id, base_targets, datetime.date.today()
+    )
+    
+    # C. Update Profile? 
+    # CRITICAL: Only update UserProfile if targets match Baseline (No Event Active)
+    # This protects the user's "True Reference" from being overwritten by temporary buffer drops.
     if not getattr(profile, 'skip_macro_calculation', False):
-        profile.calories = targets['calories']
-        profile.protein = targets['protein']
-        profile.fat = targets['fat']
-        profile.carbs = targets['carbs']
-        db.commit()
+        # We only save to profile if these are the "Normal" targets
+        # Or... we strictly separate "Plan Targets" from "Profile Targets".
+        # For now, let's keep Profile as the "Source of Truth for Normal Days".
+        
+        is_baseline = (targets['calories'] == base_targets['calories'])
+        if is_baseline:
+            profile.calories = targets['calories']
+            profile.protein = targets['protein']
+            profile.fat = targets['fat']
+            profile.carbs = targets['carbs']
+            db.commit()
+        else:
+            logger.info(f"Social Buffer Active: Using effective targets ({targets['calories']} vs {base_targets['calories']}) without overwriting profile.")
     
     # 3. Detect Regeneration Scenario (no custom prompt but existing plan exists)
     is_regeneration_for_variety = False
@@ -1654,9 +1890,64 @@ RULES:
                 is_valid_plan = True
                 break
             else:
-                # Feedback for next attempt (if any retries left)
-                # LLM can change the dish selection if portions fail (though direct calc should not fail often)
-                
+                # --- SMART ADJUSTMENT (2nd Attempt) ---
+                # Strategy: If validation fails, try to mathematically adjust portions
+                # to fix the specific deviations without breaking the good ones.
+                if current_attempt < max_retries:
+                    logger.info("Validation failed. Attempting Smart Adjustment...")
+                    try:
+                        adjusted_meals = adjust_portions_to_fix_deviations(
+                            db=db,
+                            meals=generated_meals,
+                            targets=targets,
+                            deviations=deviations
+                        )
+                        
+                        # Re-calculate totals for adjusted meals
+                        total_metrics_adj = {"p": 0, "c": 0, "f": 0, "cal": 0}
+                        for item in adjusted_meals:
+                            nutrients = item.get("nutrients", {})
+                            total_metrics_adj["p"] += float(nutrients.get("p", 0))
+                            total_metrics_adj["c"] += float(nutrients.get("c", 0))
+                            total_metrics_adj["f"] += float(nutrients.get("f", 0))
+                            total_metrics_adj["cal"] += float(nutrients.get("cal", 0))
+                        
+                        final_adj_totals = {
+                            "calories": total_metrics_adj["cal"],
+                            "protein": total_metrics_adj["p"],
+                            "carbs": total_metrics_adj["c"],
+                            "fat": total_metrics_adj["f"]
+                        }
+                        
+                        is_valid_adj, deviations_adj = validate_macro_deviation(final_adj_totals, targets)
+                        
+                        if is_valid_adj:
+                            logger.info("Smart Adjustment SUCCESS! Validation passed.")
+                            generated_meals = adjusted_meals
+                            is_valid_plan = True
+                            
+                            # Log success
+                            print("\n" + "=" * 70)
+                            print("       SMART ADJUSTMENT SUCCESS (2nd Attempt)")
+                            print("=" * 70)
+                            print(f"{'METRIC':<12} | {'PROFILE TARGET':<15} | {'ADJUSTED':<15} | {'DEVIATION':<13}| {'STATUS':<6}")
+                            print("-" * 70)
+                            for key in ["calories", "protein", "carbs", "fat"]:
+                                target_val = targets.get(key, 0)
+                                gen_val = final_adj_totals.get(key, 0)
+                                dev_pct = ((gen_val - target_val) / target_val * 100) if target_val > 0 else 0
+                                status = "✓ OK" if abs(dev_pct) <= 5 else "✗ FAIL"
+                                print(f"{key.upper():<12} | {target_val:<15.1f} | {gen_val:<15.1f} | {abs(dev_pct):<7.1f} % | {status}")
+                            print("=" * 70)
+                            break
+                        else:
+                            logger.warning("Smart Adjustment failed to fully resolve deviations.")
+                            # Continue to next retry loop (LLM regeneration) if needed
+                            
+                    except Exception as e:
+                        logger.error(f"Smart Adjustment error: {e}")
+
+                # Feedback for next LLM attempt (if we didn't break)
                 feedback_parts = []
                 for k, v in deviations.items():
                     if not v["within_tolerance"]:
@@ -1665,10 +1956,7 @@ RULES:
                 
                 feedback_prompt = f"Validation failed. Issues: {', '.join(feedback_parts)}. "
                 if current_attempt < max_retries:
-                    logger.warning(f"Validation failed attempt {current_attempt}: {feedback_prompt}")
-                    # Retrying will ask LLM for potentially different dishes if density was an issue
-                    # Although with direct calc, we force calories match, so issues might be protein/carb balance.
-                    pass 
+                    logger.warning(f"Validation failed attempt {current_attempt}: {feedback_prompt}") 
             
     # End Loop
     
@@ -1679,6 +1967,25 @@ RULES:
     total_metrics = {"p": 0, "c": 0, "f": 0, "cal": 0}
 
     for item in generated_meals:
+        # --- STRICT DB ENFORCEMENT START ---
+        # Recalculate nutrients from the final portion string to ensure DB consistency
+        # This overrides any LLM-estimated or optimization-drifted values
+        try:
+            db_analysis = calculate_meal_macros_from_db(db, item.get("portion_size", ""))
+            
+            # Override nutrients with strict DB values
+            item["nutrients"] = {
+                "p": round(db_analysis["total_p"], 1),
+                "c": round(db_analysis["total_c"], 1),
+                "f": round(db_analysis["total_f"], 1),
+                "cal": round(db_analysis["total_cal"])
+            }
+            # Log the override
+            # print(f"  🔒 Strict DB Enforcement for {item.get('meal_id')}: {item['nutrients']}")
+        except Exception as e:
+            logger.error(f"Failed to enforce DB consistency for {item.get('meal_id')}: {e}")
+        # --- STRICT DB ENFORCEMENT END ---
+
         nutrients = item.get("nutrients", {})
         
         p = float(nutrients.get("p", 0))
@@ -2076,3 +2383,124 @@ def _verify_and_log_macros(db: Session, meal_plans: List[MealPlan]):
     print(f"{'Fat':<10} | {total_gen['f']:<12.1f} | {total_actual['f']:<12.1f} | {total_gen['f']-total_actual['f']:<+10.1f}")
     print(f"{'Calories':<10} | {total_gen['cal']:<12.0f} | {total_actual['cal']:<12.0f} | {total_gen['cal']-total_actual['cal']:<+10.0f}")
     print("="*80 + "\n")
+
+def patch_todays_meal_plan(db: Session, user_id: int, target_calories: int, completed_meals: List[str]):
+    """
+    Feast Mode Helper:
+    Adjusts the *remaining* meals for today to meet a new (lower) calorie target.
+    
+    Args:
+        db: Database session
+        user_id: User ID
+        target_calories: The NEW effective daily target (e.g. 1800)
+        completed_meals: List of meal IDs already logged (e.g. ["breakfast", "lunch"])
+    """
+    # 1. Fetch User Profile
+    profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+    if not profile:
+        return {"error": "Profile not found"}
+        
+    # 2. Fetch Current Meal Plan
+    plan_items = db.query(MealPlan).filter(MealPlan.user_profile_id == profile.id).all()
+    if not plan_items:
+        return {"error": "No meal plan found for today"}
+        
+    # 3. Calculate Consumed & Remaining
+    consumed_calories = 0
+    remaining_items = []
+    
+    completed_norm = [m.lower() for m in completed_meals]
+    
+    for item in plan_items:
+        # Check if meal is completed
+        # We use strict matching (breakfast == breakfast)
+        if item.meal_id.lower() in completed_norm:
+            # Assume consumed as planned (or close enough for this adjustment)
+            # Better: We should use actual FoodLog if available, but for now plan data is safer fallback
+            consumed_calories += float(item.nutrients.get('calories', 0))
+        else:
+            remaining_items.append(item)
+            
+    # 4. Calculate Deficit
+    # Goal: Target - Consumed = Remaining Budget
+    remaining_budget = target_calories - consumed_calories
+    
+    # Calculate current planned calories for remaining items
+    current_planned_calories = sum(float(i.nutrients.get('calories', 0)) for i in remaining_items)
+    
+    deficit = current_planned_calories - remaining_budget
+    
+    print(f"[FeastPatch] Target: {target_calories}, Consumed: {consumed_calories}, Budget: {remaining_budget}")
+    print(f"[FeastPatch] Planned: {current_planned_calories}, Deficit to Cut: {deficit}")
+    
+    if deficit <= 0:
+        return {"message": "No adjustment needed (Under budget)", "deficit": 0}
+        
+    if remaining_budget <= 200:
+        return {"message": "Warning: Remaining budget is too low (<200kcal). Dangerous to adjust.", "deficit": deficit}
+
+    # 5. Apply Reduction Strategy
+    # We need to cut 'deficit' calories from 'remaining_items'
+    # Strategy: Reduce CARB and FAT sources first. Maintain PROTEIN if possible.
+    
+    # a. Identify scalable items in remaining meals
+    # This requires parsing the portion_size string again... 
+    # OR we can just simple-scale the whole meal?
+    # Simple scaling is safer and faster.
+    # New Calorie Goal for Remaining = Remaining Budget
+    # Ratio = Remaining Budget / Current Planned
+    
+    ratio = remaining_budget / current_planned_calories
+    
+    # Safety Cap: Don't reduce below 50% of original size (to avoid starvation/unrealistic portions)
+    ratio = max(ratio, 0.5)
+    
+    changes_log = []
+    
+    for item in remaining_items:
+        original_cal = float(item.nutrients.get('calories', 0))
+        new_cal = original_cal * ratio
+        
+        # Scaling Factor for this item
+        item_ratio = ratio 
+        
+        # Update Nutrients
+        if not item.nutrients: item.nutrients = {}
+        
+        old_p = float(item.nutrients.get('protein', 0))
+        old_c = float(item.nutrients.get('carbs', 0))
+        old_f = float(item.nutrients.get('fat', 0))
+        
+        item.nutrients['calories'] = new_cal
+        item.nutrients['protein'] = old_p * item_ratio
+        item.nutrients['carbs'] = old_c * item_ratio
+        item.nutrients['fat'] = old_f * item_ratio
+        
+        # Update Portion Size String (Crucial for UI)
+        # "200g Rice, 100g Chicken" -> "140g Rice, 70g Chicken" (approx)
+        import re
+        def scale_portion_string(p_str, factor):
+            # Regex for "100g", "200ml", "1.5 slice", "2 pcs"
+            # We look for numbers at start of words
+            def replace_num(match):
+                val = float(match.group(1))
+                new_val = val * factor
+                # Round nicely
+                if new_val < 10: return f"{new_val:.1f}"
+                return f"{int(new_val)}"
+                
+            return re.sub(r'\b(\d+(?:\.\d+)?)\s*(?:g|ml|slice|pc|cup|tbsp|tsp)?', lambda m: m.group(0).replace(m.group(1), replace_num(m)), p_str)
+
+        new_portion = scale_portion_string(item.portion_size, item_ratio)
+        
+        changes_log.append(f"{item.meal_id}: {item.portion_size} -> {new_portion} ({original_cal:.0f} -> {new_cal:.0f} kcal)")
+        
+        item.portion_size = new_portion
+        
+    db.commit()
+    
+    return {
+        "message": "Plan updated successfully",
+        "deficit_cut": current_planned_calories - (current_planned_calories * ratio),
+        "changes": changes_log
+    }

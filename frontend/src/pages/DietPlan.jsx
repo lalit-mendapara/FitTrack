@@ -286,7 +286,7 @@ const DietPlan = ({ isEmbedded = false }) => {
   }
 
   return (
-    <div className={`min-h-screen bg-gray-50/50 ${isEmbedded ? '' : 'pb-20'}`}>
+    <div className={`h-screen flex flex-col bg-gray-50/50 overflow-hidden`}>
       {!isEmbedded && <Navbar />}
       
       {showProfileUpdateWarning && (
@@ -305,7 +305,7 @@ const DietPlan = ({ isEmbedded = false }) => {
       )}
 
       {/* Hero / Header Section */}
-      <div className={`${isEmbedded ? 'pt-4' : 'pt-20'} bg-white border-b border-gray-100 shadow-sm relative overflow-hidden`}>
+      <div className={`${isEmbedded ? 'pt-4' : 'pt-20'} bg-white border-b border-gray-100 shadow-sm relative overflow-hidden flex-shrink-0 z-10`}>
          <div className="absolute inset-0 bg-gradient-to-r from-indigo-50/50 to-white pointer-events-none"></div>
          <div className="container mx-auto px-6 relative z-10 pb-5">
             <div className="flex flex-col lg:flex-row justify-between items-center gap-4">
@@ -359,7 +359,8 @@ const DietPlan = ({ isEmbedded = false }) => {
          </div>
       </div>
 
-      <div className="container mx-auto px-6 mt-6">
+      <div className={`flex-1 overflow-y-auto no-scrollbar ${isEmbedded ? '' : 'pb-24'}`}>
+        <div className="container mx-auto px-6 mt-6">
          {!plan || isPlanExpired ? (
             <div className="text-center py-20">
                <div className="max-w-lg mx-auto bg-white p-12 rounded-[2rem] shadow-xl border border-gray-100">
@@ -465,6 +466,7 @@ const DietPlan = ({ isEmbedded = false }) => {
                </div>
             </>
          )}
+      </div>
       </div>
 
       {/* Custom Prompt Modal */}

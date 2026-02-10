@@ -4,6 +4,7 @@ import logging
 import re
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
+from datetime import date
 
 from app.models.user_profile import UserProfile
 from app.models.workout_plan import WorkoutPlan
@@ -105,6 +106,24 @@ def generate_workout_plan(db: Session, request_data: WorkoutPlanRequestData):
              # Minimal context
              existing_plan_context = f"\nCURRENT PLAN:\n{json.dumps(existing.weekly_schedule)[:500]}..."
 
+    # Check for active Social Event to inject context
+    from app.services.social_event_service import get_active_event
+    from datetime import date
+    
+    # We need to know if the PLAN covers the event date.
+    # For now, let's assume the event is within the next 7 days (the plan duration).
+    active_event = get_active_event(db, user_id, date.today())
+    social_context = ""
+    
+    if active_event:
+        social_context = f"""
+        🚨 SPECIAL EVENT DETECTED: "{active_event.event_name}" on {active_event.event_date}.
+        GOAL: The user is "banking" calories for this big meal.
+        INSTRUCTION: On {active_event.event_date.strftime('%A')}, you MUST schedule a "GLYCOGEN DEPLETION" workout (e.g., High Volume Leg Day or Full Body Depletion).
+        - Focus: Compound movements, higher reps (12-15), metabolic stress.
+        - Objective: Deplete muscle glycogen so the upcoming feast goes to muscle repair, not fat storage.
+        """
+
     system_prompt = "You are a professional fitness coach. Return strictly valid JSON."
     
     user_prompt = f"""
@@ -121,15 +140,28 @@ def generate_workout_plan(db: Session, request_data: WorkoutPlanRequestData):
     1. Aligns with the user's goal ({profile.fitness_goal}) and experience level.
     2. Includes specific warm-up and regular cardio.
     3. Adapts to user feedback: "{custom_prompt if custom_prompt else 'None'}"
+    
+    {social_context}
 
-    # CONSTRAINTS (Health & Safety)
-    - Health Restrictions: {prefs.health_restrictions}
-    ⚠️ CRITICAL: You MUST strictly avoid ANY exercises that could aggravate these conditions.
-    Examples:
-    - Knee injury → No squats, lunges, leg press
-    - Shoulder injury → No overhead press, heavy bench
-    - Lower back pain → No deadlifts, bent-over rows
-    if health restrictions are present, review EVERY exercise against them.
+    # CONSTRAINTS (Health & Safety) - CRITICAL
+    - Health Restrictions: "{prefs.health_restrictions}"
+    
+    ⛔ STRICT PROHIBITION PROTOCOL:
+    1. IDENTIFY: specific muscle groups and joints affected by the health restrictions.
+    2. EXCLUDE: 
+       - DIRECTLY: Do NOT include ANY exercise that targets the injured area.
+       - INDIRECTLY: Do NOT include ANY compound movement where the injured area is a secondary mover (e.g., No "Bench Press" for shoulder injuries).
+    3. OMIT MUSCLE GROUP: If a muscle group is severely restricted (e.g. "Shoulder Injury"), DO NOT schedule a workout day focused on that muscle group.
+       - Instead, focus on other unaffected areas (e.g. Legs, Core, Cardio).
+    
+    ⚠️ IF A SAFETY CONFLICT EXISTS OR YOU ARE UNSURE, OMIT THE EXERCISE. BETTER TO SKIP THAN INJURE.
+    
+    Examples of STRICT Exclusions:
+    - Knee Injury: NO Squats, Lunges, Leg Press, Jumping, or High Impact Cardio.
+    - Shoulder Injury: NO Overhead Press, Bench Press, Push-ups, Dips, or Upright Rows.
+    - Lower Back Pain: NO Deadlifts, Bent-over Rows, Good Mornings, or Heavy Squats.
+    
+    If health restrictions are present, review EVERY exercise against them.
 
     # AVAILABLE EQUIPMENT & EXERCISES
     {ex_context}
@@ -390,3 +422,104 @@ def generate_workout_plan(db: Session, request_data: WorkoutPlanRequestData):
         "workout_plan": generated_plan,
         "profile_data": profile_data.dict()
     }
+def patch_limit_day_workout(db: Session, user_id: int, event_date: date):
+    """
+    Patches the user's current workout plan to inject a "Glycogen Depletion" workout 
+    on the specific event date.
+    """
+    from datetime import date, timedelta
+    
+    # 1. Get Profile & Plan
+    profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+    if not profile: return
+    
+    plan = db.query(WorkoutPlan).filter(WorkoutPlan.user_profile_id == profile.id).first()
+    if not plan or not plan.weekly_schedule: return
+    
+    # 2. Determine Day Key (e.g. "day6")
+    # We assume the plan started... when? 
+    # Current limitation: The plan is a "Weekly Schedule" (Day 1 - Day 7). 
+    # It loops. We just need to know which Day of Week the event is.
+    # Event Date -> Weekday (0=Mon, 6=Sun)
+    # We map this to the plan's keys.
+    
+    weekday_map = {0: "Monday", 1: "Tuesday", 2: "Wednesday", 3: "Thursday", 4: "Friday", 5: "Saturday", 6: "Sunday"}
+    event_weekday_name = weekday_map[event_date.weekday()]
+    
+    target_key = None
+    for key, day_data in plan.weekly_schedule.items():
+        # Check if day_name matches
+        if day_data.get("day_name") == event_weekday_name:
+            target_key = key
+            break
+            
+    if not target_key:
+        return # Could not match day
+        
+    # 3. Create the Depletion Workout
+    depletion_workout = {
+        "day_name": event_weekday_name,
+        "workout_name": "🔥 FEAST MODE: Glycogen Depletion",
+        "primary_muscle_group": "Legs & Full Body",
+        "focus": "Metabolic Depletion",
+        "session_duration_min": 60,
+        "exercises": [
+            {
+                "exercise": "Bodyweight Squats (High Reps)",
+                "sets": 4,
+                "reps": "20-25",
+                "rest_sec": 45,
+                "instructions": ["Constant tension", "No lockout at top", "Burn out the legs"],
+                "target_muscle": "Quadriceps",
+                "calories_burned": 150 # Est
+            },
+            {
+                "exercise": "Walking Lunges",
+                "sets": 3,
+                "reps": "15 per leg",
+                "rest_sec": 60,
+                "instructions": ["Deep stretch", "Keep torso upright", "Focus on glutes/hams"],
+                "target_muscle": "Glutes & Hamstrings",
+                "calories_burned": 120
+            },
+            {
+                "exercise": "Push-ups (AMRAP)",
+                "sets": 3,
+                "reps": "Failure",
+                "rest_sec": 60,
+                "instructions": ["Chest to floor", "Explosive up", "Max reps"],
+                "target_muscle": "Chest",
+                "calories_burned": 100
+            },
+            {
+                "exercise": "Burpees",
+                "sets": 3,
+                "reps": "15",
+                "rest_sec": 60,
+                "instructions": ["Full body movement", "Jump high", "Get heart rate up"],
+                "target_muscle": "Full Body",
+                "calories_burned": 150
+            }
+        ],
+        "cardio_exercises": [
+            {
+                "exercise": "HIIT Sprints",
+                "duration": "15 mins",
+                "intensity": "High",
+                "notes": "30s Sprint / 30s Walk",
+                "calories_burned": 200,
+                "instructions": ["Max effort sprints", "Recover fully between"]
+            }
+        ]
+    }
+    
+    # 4. Patch & Save
+    # We must clone the dict to ensure SQLAlchemy detects change
+    new_schedule = dict(plan.weekly_schedule)
+    new_schedule[target_key] = depletion_workout
+    
+    plan.weekly_schedule = new_schedule
+    # Also update history? Maybe not strict requirement for now.
+    
+    db.commit()
+    logger.info(f"Patched workout for user {user_id} on {event_weekday_name} (Feast Mode)")
