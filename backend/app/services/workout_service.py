@@ -523,3 +523,61 @@ def patch_limit_day_workout(db: Session, user_id: int, event_date: date):
     
     db.commit()
     logger.info(f"Patched workout for user {user_id} on {event_weekday_name} (Feast Mode)")
+
+
+def restore_workout_plan(db: Session, user_id: int, event_date: date):
+    """
+    Restores the original workout for a specific date (undoing Feast Mode patch).
+    Attempts to retrieve the original day from WorkoutPlanHistory.
+    """
+    from datetime import date
+    
+    # 1. Get Profile & Plan
+    profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+    if not profile: return
+    
+    plan = db.query(WorkoutPlan).filter(WorkoutPlan.user_profile_id == profile.id).first()
+    if not plan or not plan.weekly_schedule: return
+    
+    # 2. Determine Day Key (e.g. "day6")
+    weekday_map = {0: "Monday", 1: "Tuesday", 2: "Wednesday", 3: "Thursday", 4: "Friday", 5: "Saturday", 6: "Sunday"}
+    event_weekday_name = weekday_map[event_date.weekday()]
+    
+    target_key = None
+    for key, day_data in plan.weekly_schedule.items():
+        if day_data.get("day_name") == event_weekday_name:
+            target_key = key
+            break
+            
+    if not target_key:
+        return 
+        
+    # 3. Fetch History Snapshot
+    # Get latest history entry that ISN'T the current plan? No, history is static snapshot.
+    history = db.query(WorkoutPlanHistory).filter(
+        WorkoutPlanHistory.user_profile_id == profile.id
+    ).order_by(WorkoutPlanHistory.created_at.desc()).first()
+    
+    if not history or not history.workout_plan_snapshot:
+        logger.warning(f"No workout history found for user {user_id}. Cannot restore original workout.")
+        return
+
+    snapshot_schedule = history.workout_plan_snapshot.get("weekly_schedule", {})
+    
+    # 4. Restore
+    if target_key in snapshot_schedule:
+        original_day = snapshot_schedule[target_key]
+        
+        # Verify it matches the day name to be safe
+        if original_day.get("day_name") == event_weekday_name:
+            # Clone dict to trigger SQLAlchemy update
+            new_schedule = dict(plan.weekly_schedule)
+            new_schedule[target_key] = original_day
+            plan.weekly_schedule = new_schedule
+            
+            db.commit()
+            logger.info(f"Restored original workout for user {user_id} on {event_weekday_name} (Revert Feast Mode)")
+        else:
+            logger.warning(f"History mismatch: Key {target_key} is {original_day.get('day_name')} but needed {event_weekday_name}")
+    else:
+        logger.warning(f"Key {target_key} not found in workout history snapshot.")

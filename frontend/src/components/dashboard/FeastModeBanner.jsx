@@ -1,8 +1,28 @@
-import React from 'react';
-import { Sparkles, Utensils, Calendar, TrendingDown, PartyPopper } from 'lucide-react';
+import React, { useState } from 'react';
+import { Sparkles, Utensils, Calendar, TrendingDown, PartyPopper, XCircle } from 'lucide-react';
+import { cancelSocialEvent } from '../../api/socialEventService';
 
-const FeastModeBanner = ({ event }) => {
+const FeastModeBanner = ({ event, onUpdate }) => {
+    const [loading, setLoading] = useState(false);
+
     if (!event) return null;
+
+    const handleCancel = async () => {
+        if (!window.confirm(`Are you sure you want to cancel "${event.event_name}"? This will restore your original calorie targets and workout plan.`)) {
+            return;
+        }
+
+        setLoading(true);
+        try {
+            await cancelSocialEvent();
+            if (onUpdate) onUpdate();
+        } catch (error) {
+            console.error("Failed to cancel feast mode", error);
+            alert("Failed to cancel. Please try again.");
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const isFeastDay = event.status === 'FEAST_DAY';
     
@@ -30,15 +50,25 @@ const FeastModeBanner = ({ event }) => {
                         </div>
                     </div>
                     
-                    <div className="flex items-center gap-4 bg-gray-50 px-4 py-2 rounded-xl border border-gray-100 min-w-fit">
-                        <div className="text-right">
-                            <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Total Banked</p>
-                            <p className="text-xl font-black text-indigo-600">
-                                {event.target_bank_calories} <span className="text-sm font-normal text-gray-400">kcal</span>
-                            </p>
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                        <div className="flex items-center gap-4 bg-gray-50 px-4 py-2 rounded-xl border border-gray-100 min-w-fit">
+                            <div className="text-right">
+                                <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Total Banked</p>
+                                <p className="text-xl font-black text-indigo-600">
+                                    {event.target_bank_calories} <span className="text-sm font-normal text-gray-400">kcal</span>
+                                </p>
+                            </div>
+                            <div className="h-8 w-px bg-gray-200"></div>
+                            <Calendar size={20} className="text-gray-400" />
                         </div>
-                        <div className="h-8 w-px bg-gray-200"></div>
-                        <Calendar size={20} className="text-gray-400" />
+
+                        <button 
+                            onClick={handleCancel}
+                            disabled={loading}
+                            className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-xl transition-colors disabled:opacity-50"
+                        >
+                            {loading ? '...' : <><XCircle size={16} /> Cancel</>}
+                        </button>
                     </div>
                 </div>
             </div>
@@ -68,8 +98,18 @@ const FeastModeBanner = ({ event }) => {
                     </div>
                 </div>
                 
-                <div className="relative z-10 bg-gradient-to-r from-orange-500 to-red-500 text-white px-6 py-2 rounded-xl shadow-md transform hover:scale-105 transition-transform font-bold text-center">
-                    Enjoy! 🍽️
+                <div className="flex items-center gap-3 relative z-10">
+                    <div className="bg-gradient-to-r from-orange-500 to-red-500 text-white px-6 py-2 rounded-xl shadow-md transform hover:scale-105 transition-transform font-bold text-center">
+                        Enjoy! 🍽️
+                    </div>
+                     <button 
+                        onClick={handleCancel}
+                        disabled={loading}
+                        className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-500 hover:text-red-600 bg-white/50 hover:bg-white rounded-lg transition-colors"
+                        title="Cancel Feast Day (Revert to normal)"
+                    >
+                        {loading ? '...' : <XCircle size={16} />}
+                    </button>
                 </div>
             </div>
         </div>

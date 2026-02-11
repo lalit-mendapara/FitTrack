@@ -5,6 +5,7 @@ import re
 from typing import List, Optional, Dict, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_, and_, not_
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.models.user_profile import UserProfile
 from app.models.food_item import FoodItem
@@ -2384,15 +2385,17 @@ def _verify_and_log_macros(db: Session, meal_plans: List[MealPlan]):
     print(f"{'Calories':<10} | {total_gen['cal']:<12.0f} | {total_actual['cal']:<12.0f} | {total_gen['cal']-total_actual['cal']:<+10.0f}")
     print("="*80 + "\n")
 
-def patch_todays_meal_plan(db: Session, user_id: int, target_calories: int, completed_meals: List[str]):
+def adjust_todays_meal_plan(db: Session, user_id: int, target_calories: int, completed_meals: List[str]):
     """
-    Feast Mode Helper:
-    Adjusts the *remaining* meals for today to meet a new (lower) calorie target.
+    Feast Mode Helper (Bidirectional):
+    Adjusts the *remaining* meals for today to meet a new calorie target.
+    - If target < planned: SCALES DOWN (Banking Phase)
+    - If target > planned: SCALES UP (Restore Phase / Undo)
     
     Args:
         db: Database session
         user_id: User ID
-        target_calories: The NEW effective daily target (e.g. 1800)
+        target_calories: The NEW effective daily target (e.g. 1800 or 2500)
         completed_meals: List of meal IDs already logged (e.g. ["breakfast", "lunch"])
     """
     # 1. Fetch User Profile
@@ -2411,86 +2414,114 @@ def patch_todays_meal_plan(db: Session, user_id: int, target_calories: int, comp
     
     completed_norm = [m.lower() for m in completed_meals]
     
+    def get_nutrient_val(nuts, keys):
+        nuts = nuts or {}
+        for k in keys:
+            try:
+                val = float(nuts.get(k) or 0)
+                if val > 0: return val
+            except (ValueError, TypeError):
+                continue
+        return 0.0
+
+    def get_calories(item):
+        nuts = item.nutrients or {}
+        # Try direct keys
+        cal = get_nutrient_val(nuts, ['calories', 'cal'])
+        if cal > 0: return cal
+        
+        # Try calc from macros
+        p = get_nutrient_val(nuts, ['protein', 'p'])
+        c = get_nutrient_val(nuts, ['carbs', 'c'])
+        f = get_nutrient_val(nuts, ['fat', 'f'])
+        
+        if p > 0 or c > 0 or f > 0:
+            return (p * 4) + (c * 4) + (f * 9)
+            
+        return 0.0
+    
     for item in plan_items:
         # Check if meal is completed
-        # We use strict matching (breakfast == breakfast)
+        cal = get_calories(item)
         if item.meal_id.lower() in completed_norm:
-            # Assume consumed as planned (or close enough for this adjustment)
-            # Better: We should use actual FoodLog if available, but for now plan data is safer fallback
-            consumed_calories += float(item.nutrients.get('calories', 0))
+            consumed_calories += cal
         else:
             remaining_items.append(item)
             
-    # 4. Calculate Deficit
+    # 4. Calculate Budget & Difference
     # Goal: Target - Consumed = Remaining Budget
     remaining_budget = target_calories - consumed_calories
     
     # Calculate current planned calories for remaining items
-    current_planned_calories = sum(float(i.nutrients.get('calories', 0)) for i in remaining_items)
+    current_planned_calories = sum(get_calories(i) for i in remaining_items)
     
-    deficit = current_planned_calories - remaining_budget
+    # Difference (Positive = Needs more food, Negative = Needs less food)
+    diff = remaining_budget - current_planned_calories 
     
-    print(f"[FeastPatch] Target: {target_calories}, Consumed: {consumed_calories}, Budget: {remaining_budget}")
-    print(f"[FeastPatch] Planned: {current_planned_calories}, Deficit to Cut: {deficit}")
+    print(f"[MealAdjust] Target: {target_calories}, Consumed: {consumed_calories}, Budget: {remaining_budget}")
+    print(f"[MealAdjust] Planned: {current_planned_calories}, Diff: {diff}")
     
-    if deficit <= 0:
-        return {"message": "No adjustment needed (Under budget)", "deficit": 0}
+    # Small threshold to avoid noise
+    if abs(diff) < 20:
+        return {"message": "No adjustment needed (Within threshold)", "diff": 0}
         
     if remaining_budget <= 200:
-        return {"message": "Warning: Remaining budget is too low (<200kcal). Dangerous to adjust.", "deficit": deficit}
+        return {"message": "Warning: Remaining budget is too low (<200kcal). Dangerous to adjust.", "diff": diff}
 
-    # 5. Apply Reduction Strategy
-    # We need to cut 'deficit' calories from 'remaining_items'
-    # Strategy: Reduce CARB and FAT sources first. Maintain PROTEIN if possible.
+    # 5. Apply Scaling Strategy
+    # Ratio > 1.0 (Scale Up), Ratio < 1.0 (Scale Down)
+    if current_planned_calories > 0:
+        ratio = remaining_budget / current_planned_calories
+    else:
+        ratio = 1.0
     
-    # a. Identify scalable items in remaining meals
-    # This requires parsing the portion_size string again... 
-    # OR we can just simple-scale the whole meal?
-    # Simple scaling is safer and faster.
-    # New Calorie Goal for Remaining = Remaining Budget
-    # Ratio = Remaining Budget / Current Planned
-    
-    ratio = remaining_budget / current_planned_calories
-    
-    # Safety Cap: Don't reduce below 50% of original size (to avoid starvation/unrealistic portions)
-    ratio = max(ratio, 0.5)
+    # Safety Caps
+    # Don't reduce below 50% (Starvation guard)
+    # Don't increase above 200% (Gluttony guard / unrealistic portion)
+    ratio = max(0.5, min(ratio, 2.0))
     
     changes_log = []
+    import re
+
+    def scale_portion_string(p_str, factor):
+        # Regex for "100g", "200ml", "1.5 slice", "2 pcs"
+        # We look for numbers at start of words
+        return re.sub(r'\b(\d+(\.\d+)?)\b', lambda m: f"{float(m.group(1)) * factor:.0f}", p_str)
+
     
     for item in remaining_items:
-        original_cal = float(item.nutrients.get('calories', 0))
+        # Flexible Parsing
+        original_cal = get_calories(item) # Re-use helper
+             
         new_cal = original_cal * ratio
         
         # Scaling Factor for this item
         item_ratio = ratio 
         
-        # Update Nutrients
-        if not item.nutrients: item.nutrients = {}
+        # Update Nutrients (Create new dict to ensure SQLAlchemy detects change in JSONB)
+        current_nuts = dict(item.nutrients or {})
         
-        old_p = float(item.nutrients.get('protein', 0))
-        old_c = float(item.nutrients.get('carbs', 0))
-        old_f = float(item.nutrients.get('fat', 0))
+        # We must re-extract base macros to scale them
+        p_val = get_nutrient_val(current_nuts, ['protein', 'p'])
+        c_val = get_nutrient_val(current_nuts, ['carbs', 'c'])
+        f_val = get_nutrient_val(current_nuts, ['fat', 'f'])
         
-        item.nutrients['calories'] = new_cal
-        item.nutrients['protein'] = old_p * item_ratio
-        item.nutrients['carbs'] = old_c * item_ratio
-        item.nutrients['fat'] = old_f * item_ratio
+        # We standardize to full names on save
+        current_nuts['calories'] = new_cal
+        current_nuts['protein'] = p_val * item_ratio
+        current_nuts['carbs'] = c_val * item_ratio
+        current_nuts['fat'] = f_val * item_ratio
+        
+        # ALSO Update legacy keys if they exist to prevent CRUD reading stale data
+        if 'p' in current_nuts: current_nuts['p'] = current_nuts['protein']
+        if 'c' in current_nuts: current_nuts['c'] = current_nuts['carbs']
+        if 'f' in current_nuts: current_nuts['f'] = current_nuts['fat']
+        if 'cal' in current_nuts: current_nuts['cal'] = current_nuts['calories']
+        
+        item.nutrients = current_nuts
+        flag_modified(item, "nutrients")
         
         # Update Portion Size String (Crucial for UI)
-        # "200g Rice, 100g Chicken" -> "140g Rice, 70g Chicken" (approx)
-        import re
-        def scale_portion_string(p_str, factor):
-            # Regex for "100g", "200ml", "1.5 slice", "2 pcs"
-            # We look for numbers at start of words
-            def replace_num(match):
-                val = float(match.group(1))
-                new_val = val * factor
-                # Round nicely
-                if new_val < 10: return f"{new_val:.1f}"
-                return f"{int(new_val)}"
-                
-            return re.sub(r'\b(\d+(?:\.\d+)?)\s*(?:g|ml|slice|pc|cup|tbsp|tsp)?', lambda m: m.group(0).replace(m.group(1), replace_num(m)), p_str)
-
         new_portion = scale_portion_string(item.portion_size, item_ratio)
         
         changes_log.append(f"{item.meal_id}: {item.portion_size} -> {new_portion} ({original_cal:.0f} -> {new_cal:.0f} kcal)")
@@ -2501,6 +2532,6 @@ def patch_todays_meal_plan(db: Session, user_id: int, target_calories: int, comp
     
     return {
         "message": "Plan updated successfully",
-        "deficit_cut": current_planned_calories - (current_planned_calories * ratio),
+        "diff_applied": current_planned_calories * (ratio - 1),
         "changes": changes_log
     }

@@ -46,9 +46,9 @@ def get_current_meal_plan(db: Session, user_id: int):
                 dish_name=m.dish_name,
                 portion_size=m.portion_size,
                 nutrients=NutrientDetail(
-                    p=float(m.nutrients.get('p', 0)),
-                    c=float(m.nutrients.get('c', 0)),
-                    f=float(m.nutrients.get('f', 0))
+                    p=float(m.nutrients.get('p', m.nutrients.get('protein', 0))),
+                    c=float(m.nutrients.get('c', m.nutrients.get('carbs', 0))),
+                    f=float(m.nutrients.get('f', m.nutrients.get('fat', 0)))
                 ),
                 alternatives=alternatives,
                 guidelines=guidelines,

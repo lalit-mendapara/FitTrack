@@ -24,6 +24,12 @@ const DashboardOverview = ({ hasDietPlan, hasWorkoutPlan }) => {
     const [weekOffset, setWeekOffset] = useState(0); 
 
     // Initial Setup: Timezone & Notifications
+    // 3. Fetch Active Social Event (Feast Mode)
+    const fetchSocialEvent = useCallback(async () => {
+             const event = await getActiveSocialEvent();
+             setSocialEvent(event);
+    }, []);
+
     useEffect(() => {
         // 1. Sync Timezone
         const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -37,16 +43,10 @@ const DashboardOverview = ({ hasDietPlan, hasWorkoutPlan }) => {
             }
         };
         fetchNotifications();
-
-        // 3. Fetch Active Social Event (Feast Mode)
-        const fetchSocialEvent = async () => {
-             const event = await getActiveSocialEvent();
-             if (event) {
-                 setSocialEvent(event);
-             }
-        };
+        
+        // 3. Initial Social Event Fetch
         fetchSocialEvent();
-    }, []);
+    }, [fetchSocialEvent]);
 
     const handleDismissNotification = async (id) => {
         await markNotificationRead(id);
@@ -70,7 +70,7 @@ const DashboardOverview = ({ hasDietPlan, hasWorkoutPlan }) => {
     return (
         <div className="space-y-6">
             {/* Feast Mode Banner */}
-            {socialEvent && <FeastModeBanner event={socialEvent} />}
+            {socialEvent && <FeastModeBanner event={socialEvent} onUpdate={fetchSocialEvent} />}
 
             {/* Notifications Banner */}
             {showNotifications && notifications.length > 0 && (

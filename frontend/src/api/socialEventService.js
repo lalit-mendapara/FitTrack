@@ -9,3 +9,13 @@ export const getActiveSocialEvent = async () => {
         return null;
     }
 };
+
+export const cancelSocialEvent = async () => {
+    try {
+        const response = await api.post('/social-events/cancel');
+        return response.data;
+    } catch (error) {
+        console.error("Failed to cancel social event", error);
+        throw error;
+    }
+};

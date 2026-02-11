@@ -145,3 +145,74 @@ def get_effective_daily_targets(db: Session, user_id: int, base_targets: dict, c
         return effective
         
     return base_targets
+
+# --- NEW: CANCEL / UNDO LOGIC ---
+def cancel_active_event(db: Session, user_id: int):
+    """
+    Cancels the currently active social event and restores the user's plan.
+    Does NOT modify UserProfile directly, but triggers logic to fix today's meals.
+    """
+    today = date.today()
+    event = get_active_event(db, user_id, today)
+    
+    if not event:
+        return {"error": "No active event found to cancel."}
+    
+    # 1. Capture what phase we are in (Banking vs Feast)
+    # This determines if we need to ADD back calories (Undo Banking) or REMOVE bonus (Undo Feast)
+    is_feast_day = (today == event.event_date)
+    is_banking = (event.start_date <= today < event.event_date)
+    
+    restore_amount = 0
+    if is_banking:
+        restore_amount = event.daily_deduction  # We need to ADD this back
+    elif is_feast_day:
+        restore_amount = -event.target_bank_calories # We need to REMOVE this bonus
+    
+    # 2. Deactivate Event
+    event.is_active = False
+    
+    # 3. Get User's Base Targets (The "Normal" Plan)
+    # Since UserProfile stores the base targets (unless modified by other logic, but we assume
+    # the system uses `get_effective_daily_targets` dynamically), we just need to get the
+    # current UserProfile targets.
+    # WAIT: UserProfile MIGHT have been modified if the user confirmed the event?
+    # No, `create_social_event` didn't modify UserProfile.
+    # `ai_coach.py` called `patch_todays_meal_plan` which modified MEAL portions.
+    # So `patch_todays_meal_plan` used a `new_target`.
+    # To RESTORE, we just need to call `adjust_todays_meal_plan` with the BASE target from UserProfile.
+    
+    from app.services.stats_service import StatsService
+    stats_service = StatsService(db)
+    # Note: stats_service.get_user_profile calls get_effective_daily_targets internally!
+    # We want the RAW UserProfile.
+    profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+    if not profile:
+        db.commit() # Save the deactivation
+        return {"message": "Event cancelled, but profile not found."}
+        
+    base_target = profile.calories
+    
+    # 4. Trigger Meal Plan Restoration
+    # We call adjust_todays_meal_plan with the BASE target.
+    # Since the event is now inactive, this target is the "correct" one.
+    # The adjust logic will see (Target > Planned) and scale UP.
+    
+    # We need to know which meals are eaten to avoid patching them.
+    from app.models.tracking import FoodLog
+    logs = db.query(FoodLog).filter(FoodLog.user_id == user_id, FoodLog.date == today).all()
+    completed_meals = list(set([l.meal_type.lower() for l in logs]))
+    
+    db.commit() # Commit cancellation first
+    
+    from app.services.meal_service import adjust_todays_meal_plan
+    
+    # Run Adjustment
+    # Note: `adjust_todays_meal_plan` commits its own changes.
+    adjust_result = adjust_todays_meal_plan(db, user_id, base_target, completed_meals)
+    
+    return {
+        "message": f"Feast Mode deactivated. {adjust_result.get('message', '')}",
+        "restored_calories": restore_amount,
+        "adjust_details": adjust_result
+    }
