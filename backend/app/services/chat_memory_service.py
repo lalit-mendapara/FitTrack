@@ -149,3 +149,30 @@ class ChatMemoryService:
                 self.redis_client.expire(key, 86400 * 7)
         except Exception as e:
             print(f"[Memory] Failed to hydrate questions: {e}")
+    def set_session_data(self, key: str, value: Dict[str, Any]):
+        """
+        Stores arbitrary JSON-serializable data for the session.
+        Useful for multi-turn context (e.g. pending Feast Mode proposal).
+        """
+        try:
+            redis_key = f"chat:session:{self.session_id}:context:{key}"
+            if self.redis_client:
+                import json
+                self.redis_client.setex(redis_key, 3600, json.dumps(value)) # 1 hour TTL
+        except Exception as e:
+            print(f"[Memory] Failed to set session data '{key}': {e}")
+
+    def get_session_data(self, key: str) -> Dict[str, Any]:
+        """
+        Retrieves session data by key. Returns None if not found.
+        """
+        try:
+            redis_key = f"chat:session:{self.session_id}:context:{key}"
+            if self.redis_client:
+                data = self.redis_client.get(redis_key)
+                if data:
+                    import json
+                    return json.loads(data)
+        except Exception as e:
+            print(f"[Memory] Failed to get session data '{key}': {e}")
+        return None

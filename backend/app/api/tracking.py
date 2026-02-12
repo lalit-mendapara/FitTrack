@@ -301,20 +301,53 @@ def get_daily_diet_logs(
     """
     from app.models.user_profile import UserProfile
     from app.crud.meal_plan import get_current_meal_plan
+    from app.services.social_event_service import get_effective_daily_targets
     
     # Get user's calorie target: Prefer Plan Total over Profile Target
     # This ensures "Remaining" matches the actual plan generated
     calories_target = 2000 # Default fallback
+    base_targets = {"calories": 2000, "protein": 0, "carbs": 0, "fat": 0} # Default base
     
     # 1. Try to get from active Meal Plan
     plan = get_current_meal_plan(db, current_user.id)
     if plan and plan.daily_generated_totals:
-        calories_target = plan.daily_generated_totals.calories
+        # daily_generated_totals matches schema with calories/macros
+        # It is usually a Pydantic object or dict from JSON
+        totals = plan.daily_generated_totals
+        if hasattr(totals, 'calories'):
+             calories_target = totals.calories
+             base_targets = {
+                 "calories": totals.calories,
+                 "protein": getattr(totals, 'protein', 0),
+                 "carbs": getattr(totals, 'carbs', 0),
+                 "fat": getattr(totals, 'fat', 0)
+             }
+        elif isinstance(totals, dict):
+             calories_target = totals.get('calories', 2000)
+             base_targets = totals
     else:
         # 2. Fallback to Profile Target
         profile = db.query(UserProfile).filter(UserProfile.user_id == current_user.id).first()
         if profile:
             calories_target = profile.calories
+            base_targets = {
+                "calories": profile.calories,
+                "protein": profile.protein,
+                "carbs": profile.carbs,
+                "fat": profile.fat
+            }
+            
+    # NEW: Apply Feast Mode Logic
+    # This ensures "Remaining" accounts for banking deductions or feast bonuses
+    # Only applies if date is today (logic inside service handles date check relative to event)
+    try:
+        effective = get_effective_daily_targets(db, current_user.id, base_targets, date)
+        if effective:
+            calories_target = int(effective.get('calories', calories_target))
+    except Exception as e:
+        # Fallback to base target if logic fails
+        # Assuming logger is not available in this scope, or using print for now as acceptable fallback in error case
+        pass
     
     meals = db.query(FoodLog).filter(
         FoodLog.user_id == current_user.id,

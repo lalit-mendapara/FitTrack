@@ -6,10 +6,14 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def propose_banking_strategy(db: Session, user_id: int, event_date: date, event_name: str):
+def propose_banking_strategy(db: Session, user_id: int, event_date: date, event_name: str, custom_deduction: int = None):
     """
     Calculates a proposed banking strategy for a future event.
     Returns a dict with the proposal details.
+    
+    Args:
+        custom_deduction: Optional user-specified daily deduction (kcal/day). 
+                          If provided, overrides the auto-calculated value.
     """
     today = date.today()
     days_until = (event_date - today).days
@@ -20,21 +24,24 @@ def propose_banking_strategy(db: Session, user_id: int, event_date: date, event_
     if days_until > 14:
         return {"error": "Event is too far away (max 2 weeks)"}
 
-    # Default logic: Target 800-1000 kcal buffer
-    # Calculate daily deduction needed
-    target_bank = 800
-    daily_deduction = int(target_bank / days_until)
-    
-    # Safety Check: Don't deduct too much
-    # Improve logic: Get user BMR/TDEE and ensure we don't drop below unsafe levels
-    # For MVP, cap deduction at 500 kcal/day
-    if daily_deduction > 500:
-        target_bank = 500 * days_until # Reduce goal if time is short
-        daily_deduction = 500
-    
-    # Round to nearest 50
-    daily_deduction = round(daily_deduction / 50) * 50
-    target_bank = daily_deduction * days_until
+    if custom_deduction and custom_deduction > 0:
+        # User specified their own deduction
+        daily_deduction = min(custom_deduction, 500)  # Safety cap
+        daily_deduction = round(daily_deduction / 50) * 50  # Round to nearest 50
+        target_bank = daily_deduction * days_until
+    else:
+        # Default logic: Target 800-1000 kcal buffer
+        target_bank = 800
+        daily_deduction = int(target_bank / days_until)
+        
+        # Safety Check: cap at 500 kcal/day
+        if daily_deduction > 500:
+            target_bank = 500 * days_until
+            daily_deduction = 500
+        
+        # Round to nearest 50
+        daily_deduction = round(daily_deduction / 50) * 50
+        target_bank = daily_deduction * days_until
     
     return {
         "event_name": event_name,
@@ -178,8 +185,8 @@ def cancel_active_event(db: Session, user_id: int):
     # current UserProfile targets.
     # WAIT: UserProfile MIGHT have been modified if the user confirmed the event?
     # No, `create_social_event` didn't modify UserProfile.
-    # `ai_coach.py` called `patch_todays_meal_plan` which modified MEAL portions.
-    # So `patch_todays_meal_plan` used a `new_target`.
+    # `ai_coach.py` called `adjust_todays_meal_plan` which modified MEAL portions.
+    # So `adjust_todays_meal_plan` used a `new_target`.
     # To RESTORE, we just need to call `adjust_todays_meal_plan` with the BASE target from UserProfile.
     
     from app.services.stats_service import StatsService
@@ -204,6 +211,16 @@ def cancel_active_event(db: Session, user_id: int):
     completed_meals = list(set([l.meal_type.lower() for l in logs]))
     
     db.commit() # Commit cancellation first
+    
+    # Clear feast_notes from all meal plan items
+    from app.models.meal_plan import MealPlan
+    from sqlalchemy.orm.attributes import flag_modified
+    meal_plans = db.query(MealPlan).filter(MealPlan.user_profile_id == profile.id).all()
+    for mp in meal_plans:
+        if mp.feast_notes:
+            mp.feast_notes = None
+            flag_modified(mp, "feast_notes")
+    db.commit()
     
     from app.services.meal_service import adjust_todays_meal_plan
     

@@ -34,7 +34,27 @@ def generate_plan_for_user(user_id: int):
         # Uses last 8 plans to ensure no dish repetition
         meal_service.regenerate_meal_plan(db, user_id)
         
-        # 2. Create Notification
+        # 2. Feast Mode Agent: Auto-apply LLM adjustment if in banking phase
+        try:
+            from app.services.social_event_service import get_active_event
+            from app.services.stats_service import StatsService
+            from datetime import date as date_type
+            
+            today = date_type.today()
+            event = get_active_event(db, user_id, today)
+            
+            if event and event.start_date <= today < event.event_date:
+                # User is in banking phase, apply smart adjustment
+                stats = StatsService(db)
+                input_profile = stats.get_user_profile(user_id)
+                effective_target = input_profile["caloric_target"]
+                
+                logger.info(f"[FeastAgent] Auto-adjusting for banking phase. Target: {effective_target}")
+                meal_service.adjust_meals_with_llm(db, user_id, effective_target, [])
+        except Exception as e:
+            logger.error(f"[FeastAgent] Auto-adjustment failed for user {user_id}: {e}")
+        
+        # 3. Create Notification
         notif = Notification(
             user_id=user_id,
             message="Good Morning! Your diet plan for today is ready.",

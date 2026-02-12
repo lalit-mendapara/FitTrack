@@ -48,6 +48,14 @@ class MealPlan(Base):
         # ["Drink 3L water", "No sugar", "Walk 8k steps"]
     )
 
+    feast_notes = Column(
+        JSONB,
+        nullable=True,
+        comment="Feast Mode per-meal notes"
+        # Example:
+        # ["Reduced 50 kcal - carbs trimmed for banking"]
+    )
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

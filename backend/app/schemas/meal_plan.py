@@ -19,6 +19,7 @@ class MealItem(BaseModel):
     nutrients: NutrientDetail
     alternatives: List[str]
     guidelines: List[str]
+    feast_notes: Optional[List[str]] = None
 
 class NutrientTotals(BaseModel):
     calories: float

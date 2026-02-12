@@ -359,40 +359,92 @@ class FitnessCoachService:
         if social_intent:
             return {"intent_data": None, "social_event_data": social_intent}
             
-        # 3. Check for Confirmation (Heuristic)
-        # If user says "Yes/Confirm", we need to check if there was a pending proposal.
-        # This requires looking at the LAST AI message from history.
-        # We can do this in the Social Logic node or here. Let's do it here.
-        # Simple heuristic: "confirm", "yes", "do it", "activate"
-        confirm_triggers = ["confirm", "yes", "do it", "activate", "sure", "okay", "go ahead"]
-        if any(t == msg.lower().strip() or t in msg.lower().split() for t in confirm_triggers):
-                 # Check last AI message for "Proposal" context
-             # We need to fetch history here.
-             memory = ChatMemoryService(state["session_id"])
-             last_ai_msg = memory.get_last_ai_message()
-             
-             if last_ai_msg and "Feast Mode Proposal" in last_ai_msg:
-                 # Robust Regex to extract: "**Event**: Dinner (2026-02-14)" or similar
-                 # The format in _node_process_social_event is: > **Event**: {event_name} ({event_date})
-                 import re
-                 # Updated regex to be flexible with bolding and spacing
-                 match = re.search(r"Event\*\*: (.*?) \((\d{4}-\d{2}-\d{2})\)", last_ai_msg)
-                 if not match:
-                      # Try alternative format without bold colon if needed, or stricter
-                      match = re.search(r"Event\*\*:? (.*?) \((\d{4}-\d{2}-\d{2})\)", last_ai_msg)
-                 
-                 if match:
-                     event_name = match.group(1).strip()
-                     event_date_str = match.group(2)
-                     try:
-                         event_date = datetime.strptime(event_date_str, "%Y-%m-%d").date()
-                         return {"intent_data": None, "social_event_data": {
-                             "type": "confirm",
-                             "event_name": event_name,
-                             "event_date": event_date
-                         }}
-                     except:
-                         pass
+        # 3. Check for Feast Mode Confirmation/Customization
+        # If the last AI message was a Feast Mode Proposal, use LLM to understand
+        # if the user is confirming, customizing, or rejecting the proposal.
+        memory = ChatMemoryService(state["session_id"])
+        last_ai_msg = memory.get_last_ai_message()
+
+        if last_ai_msg and "Feast Mode Proposal" in last_ai_msg:
+            import re
+            # Extract event details from proposal via regex
+            match = re.search(r"Event\*\*:?\s*(.*?)\s*\((\d{4}-\d{2}-\d{2})\)", last_ai_msg)
+            if match:
+                event_name = match.group(1).strip()
+                event_date_str = match.group(2)
+                try:
+                    event_date = datetime.strptime(event_date_str, "%Y-%m-%d").date()
+                except ValueError:
+                    event_date = None
+
+                if event_date:
+                    # Use LLM to understand user's reply to the proposal
+                    from app.services.llm_service import call_llm_json
+                    confirm_prompt = f"""The AI assistant proposed a "Feast Mode" (calorie banking strategy) for an upcoming event.
+The proposal included: reducing daily calories and adding a special workout on event day.
+
+The user replied: "{msg}"
+
+Analyze the user's reply and output JSON ONLY:
+{{
+    "action": "confirm" or "customize" or "reject",
+    "custom_deduction": null,
+    "skip_workout": false,
+    "reason": "brief explanation"
+}}
+
+Rules:
+- "action" = "confirm" if the user agrees, accepts, says yes, or wants to activate as-is
+- "action" = "customize" if the user wants to CHANGE something (adjust calories, different deduction, modify the plan)
+- "action" = "reject" if the user declines, says no, or asks unrelated questions
+- "custom_deduction" = a NUMBER (kcal/day) ONLY if the user specifies a specific deduction value, else null
+- "skip_workout" = true ONLY if the user explicitly says they don't want workout changes
+- Examples:
+  - "yes" -> {{"action": "confirm", "custom_deduction": null, "skip_workout": false, "reason": "direct confirmation"}}
+  - "activate it" -> {{"action": "confirm", "custom_deduction": null, "skip_workout": false, "reason": "direct confirmation"}}
+  - "yes but skip the workout" -> {{"action": "confirm", "custom_deduction": null, "skip_workout": true, "reason": "user wants calorie-only mode"}}
+  - "I want to adjust calories" -> {{"action": "customize", "custom_deduction": null, "skip_workout": false, "reason": "user wants to change deduction"}}
+  - "make it 300 kcal" -> {{"action": "customize", "custom_deduction": 300, "skip_workout": false, "reason": "user specified custom deduction"}}
+  - "can we do 200 per day instead?" -> {{"action": "customize", "custom_deduction": 200, "skip_workout": false, "reason": "user wants lower deduction"}}
+  - "no thanks" -> {{"action": "reject", "custom_deduction": null, "skip_workout": false, "reason": "user declined"}}
+  - "what is feast mode?" -> {{"action": "reject", "custom_deduction": null, "skip_workout": false, "reason": "user asking for info"}}"""
+
+                    try:
+                        confirmation = call_llm_json(system_prompt=confirm_prompt, user_prompt=msg, temperature=0.0)
+                        if confirmation:
+                            action = confirmation.get("action", "reject")
+                            if action == "confirm":
+                                return {"intent_data": None, "social_event_data": {
+                                    "type": "confirm",
+                                    "event_name": event_name,
+                                    "event_date": event_date,
+                                    "skip_workout": confirmation.get("skip_workout", False)
+                                }}
+                            elif action == "customize":
+                                # Try to load pending event from memory if details are missing
+                                event_data = {
+                                    "type": "customize",
+                                    "event_name": event_name,
+                                    "event_date": event_date,
+                                    "custom_deduction": confirmation.get("custom_deduction"),
+                                    "skip_workout": confirmation.get("skip_workout", False)
+                                }
+                                
+                                # If we didn't extract event_name/date from the last message (regex failed),
+                                # try loading from session context
+                                if not event_name or not event_date:
+                                    saved_context = memory.get_session_data("pending_feast_event")
+                                    if saved_context:
+                                        print(f"[Feast Confirm] Loaded pending event from memory: {saved_context['event_name']}")
+                                        event_data["event_name"] = saved_context.get("event_name")
+                                        try:
+                                            event_data["event_date"] = datetime.strptime(saved_context.get("event_date"), "%Y-%m-%d").date()
+                                        except:
+                                            pass
+                                
+                                return {"intent_data": None, "social_event_data": event_data}
+                    except Exception as e:
+                        print(f"[Feast Confirm] LLM confirmation check failed: {e}")
 
         return {"intent_data": None, "social_event_data": None}
 
@@ -421,14 +473,16 @@ class FitnessCoachService:
             # Persist
             create_social_event(self.db, user_id, proposal)
             
-            # Patch Workout
+            # Patch Workout (skip if user explicitly opted out)
             workout_patched = False
-            try:
-                from app.services.workout_service import patch_limit_day_workout
-                patch_limit_day_workout(self.db, user_id, event_date)
-                workout_patched = True
-            except Exception as e:
-                print(f"Failed to patch workout: {e}")
+            skip_workout = social_data.get("skip_workout", False)
+            if not skip_workout:
+                try:
+                    from app.services.workout_service import patch_limit_day_workout
+                    patch_limit_day_workout(self.db, user_id, event_date)
+                    workout_patched = True
+                except Exception as e:
+                    print(f"Failed to patch workout: {e}")
                 
             # --- NEW: Mid-Day Meal Adjustment ---
             meal_adjust_msg = ""
@@ -454,15 +508,14 @@ class FitnessCoachService:
                      logs = self.db.query(FoodLog).filter(FoodLog.user_id == user_id, FoodLog.date == today).all()
                      completed_meals = list(set([l.meal_type.lower() for l in logs]))
                      
-                     from app.services.meal_service import patch_todays_meal_plan
-                     patch_result = patch_todays_meal_plan(self.db, user_id, new_target, completed_meals)
-                     
-                     if patch_result.get("deficit_cut", 0) > 0:
+                     from app.services.meal_service import adjust_todays_meal_plan
+                     patch_result = adjust_todays_meal_plan(self.db, user_id, new_target, completed_meals)
+
+                     if patch_result and abs(patch_result.get("diff_applied", 0)) > 0:
                          meal_adjust_msg = (
                              f"\n\n📉 **Plan Updated**: Since you've already eaten {', '.join(completed_meals).title()}, "
-                             f"I've reduced your remaining meals by **{patch_result['deficit_cut']:.0f} kcal** to keep you on track."
+                             f"I've adjusted your remaining meals by **{abs(patch_result['diff_applied']):.0f} kcal** to keep you on track."
                          )
-                         # Add detail on changes if few
                          if patch_result.get("changes"):
                               changes_list = "\n".join([f"- {c}" for c in patch_result["changes"][:2]])
                               meal_adjust_msg += f"\n*Adjusted:*\n{changes_list}"
@@ -481,12 +534,61 @@ class FitnessCoachService:
             if meal_adjust_msg:
                 response_msg += meal_adjust_msg
                 
+            # Clear pending event from memory on success
+            memory = ChatMemoryService(state["session_id"])
+            memory.set_session_data("pending_feast_event", None)
+            
             return {
                 "final_response": response_msg,
                 "source": "SocialService"
             }
+        
+        # Scenario B: Customize (User wants to adjust the plan)
+        if social_data.get("type") == "customize":
+            event_name = social_data["event_name"]
+            event_date = social_data["event_date"]
+            custom_deduction = social_data.get("custom_deduction")
             
-        # Scenario B: New Proposal
+            if custom_deduction:
+                # User gave a specific number — re-propose with it
+                proposal = propose_banking_strategy(self.db, user_id, event_date, event_name, custom_deduction=custom_deduction)
+                
+                if "error" in proposal:
+                    return {"final_response": f"⚠️ Could not update proposal: {proposal['error']}", "source": "SocialService"}
+                
+                response = (
+                    f"> 🍱 **Updated Feast Mode Proposal**\n>\n"
+                    f"> **Event**: {event_name} ({event_date})\n"
+                    f"> **Goal**: Bank {proposal['total_banked']} kcal\n>\n"
+                    f"> 📉 **Strategy**:\n"
+                    f"> * Deduct **{proposal['daily_deduction']} kcal/day** (Starts Today)\n"
+                    f"> * Add **Leg Day Workout** ({event_date.strftime('%A')} Morning)\n>\n"
+                    f"> *Shall I activate this?*"
+                )
+            else:
+                # User wants to adjust but didn't say how — ask what they want
+                # Fetch current default proposal for reference
+                proposal = propose_banking_strategy(self.db, user_id, event_date, event_name)
+                current_deduction = proposal.get('daily_deduction', 500) if 'error' not in proposal else 500
+                
+                response = (
+                    f"Sure! What would you like to change?\n\n"
+                    f"Currently the plan is **{current_deduction} kcal/day** deduction. "
+                    f"You can tell me a specific number like *\"make it 300 kcal\"* "
+                    f"or say *\"skip the workout part\"*."
+                )
+            
+            # Save context for next turn
+            memory = ChatMemoryService(state["session_id"])
+            memory.set_session_data("pending_feast_event", {
+                "event_name": event_name,
+                "event_date": event_date.strftime("%Y-%m-%d") if event_date else None,
+                "daily_deduction": custom_deduction or 500
+            })
+            
+            return {"final_response": response, "source": "SocialService"}
+            
+        # Scenario C: New Proposal
         event_name = social_data.get("event_name")
         event_date = social_data.get("event_date")
         
@@ -503,8 +605,16 @@ class FitnessCoachService:
             f"> 📉 **Strategy**:\n"
             f"> * Deduct **{proposal['daily_deduction']} kcal/day** (Starts Today)\n"
             f"> * Add **Leg Day Workout** ({event_date.strftime('%A')} Morning)\n>\n"
-            f"> *Shall I activate this?*"
+            f"> *Want to adjust anything, or shall I activate?*"
         )
+        
+        # Save context for next turn
+        memory = ChatMemoryService(state["session_id"])
+        memory.set_session_data("pending_feast_event", {
+            "event_name": event_name,
+            "event_date": event_date.strftime("%Y-%m-%d"),
+            "daily_deduction": proposal['daily_deduction']
+        })
         
         return {"final_response": response, "source": "SocialService"}
 

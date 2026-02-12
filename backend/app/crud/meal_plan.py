@@ -52,6 +52,7 @@ def get_current_meal_plan(db: Session, user_id: int):
                 ),
                 alternatives=alternatives,
                 guidelines=guidelines,
+                feast_notes=m.feast_notes or [],
             ))
             
         # 4. Calculate Totals (on the fly to be accurate to what's stored)

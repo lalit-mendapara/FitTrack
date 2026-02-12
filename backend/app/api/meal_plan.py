@@ -79,3 +79,35 @@ def get_current_meal(
         raise HTTPException(status_code=404, detail="Meal plan not found")
     
     return meal_plan
+
+
+from pydantic import BaseModel
+from typing import Optional, List
+
+class SkipMealRequest(BaseModel):
+    meal_id: str
+    redistribute_to: Optional[List[str]] = None
+    is_feast_day: bool = False
+
+@router.post("/skip-meal")
+def skip_meal_endpoint(
+    request: SkipMealRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Feast Mode: Skip a meal.
+    On feast day: redistributes calories to remaining meals.
+    On banking day: just zeros the meal (extra calories banked).
+    """
+    from app.services.meal_service import skip_meal_and_redistribute
+    
+    result = skip_meal_and_redistribute(
+        db, current_user.id, request.meal_id, request.redistribute_to, request.is_feast_day
+    )
+    
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    
+    return result
+

@@ -10,7 +10,7 @@ from app.services.social_event_service import (
     cancel_active_event
 )
 from app.services.workout_service import patch_limit_day_workout, restore_workout_plan
-from app.services.meal_service import adjust_todays_meal_plan
+from app.services.meal_service import adjust_meals_with_llm
 from app.services.stats_service import StatsService
 from app.models.tracking import FoodLog
 from pydantic import BaseModel
@@ -135,7 +135,8 @@ def confirm_event(
         logs = db.query(FoodLog).filter(FoodLog.user_id == current_user.id, FoodLog.date == today).all()
         completed_meals = list(set([l.meal_type.lower() for l in logs]))
         
-        adjust_todays_meal_plan(db, current_user.id, new_target, completed_meals)
+        # Feast Mode Agent: LLM-powered smart adjustment (auto-fallback to ratio-based)
+        adjust_meals_with_llm(db, current_user.id, new_target, completed_meals)
     except Exception as e:
         print(f"Warning: Failed to patch meals: {e}")
 

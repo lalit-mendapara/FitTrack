@@ -19,3 +19,12 @@ export const cancelSocialEvent = async () => {
         throw error;
     }
 };
+
+export const skipMeal = async (mealId, redistributeTo = null, isFeastDay = false) => {
+    const response = await api.post('/meal-plans/skip-meal', {
+        meal_id: mealId,
+        redistribute_to: redistributeTo,
+        is_feast_day: isFeastDay,
+    });
+    return response.data;
+};

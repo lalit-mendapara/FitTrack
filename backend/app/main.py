@@ -12,8 +12,20 @@ from app.api import users,user_profile,meal_plan,login,workout_plan,workout_pref
 print(engine.url)
 
 
-#create table in database
-Base.metadata.create_all(bind=engine)
+# Run Alembic migrations on startup (replaces create_all)
+def run_migrations():
+    """Run pending Alembic migrations automatically on startup."""
+    try:
+        from alembic.config import Config
+        from alembic import command
+        alembic_cfg = Config("alembic.ini")
+        command.upgrade(alembic_cfg, "head")
+        print("[Alembic] Migrations applied successfully")
+    except Exception as e:
+        print(f"[Alembic] Migration failed, falling back to create_all: {e}")
+        Base.metadata.create_all(bind=engine)
+
+run_migrations()
 
 app = FastAPI()
 

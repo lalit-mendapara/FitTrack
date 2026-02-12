@@ -1,15 +1,17 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import Navbar from '../components/layout/Navbar';
 import { Link } from 'react-router-dom';
 import GenerationOverlay from '../components/layout/GenerationOverlay';
 import { useDietPlan } from '../hooks/useDietPlan'; // Hook Import
 import { useAuth } from '../context/AuthContext';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from 'recharts';
-import { Calendar, Apple, Coffee, Moon, Sun, ChevronRight, RefreshCw, X, MessageSquare,BicepsFlexed,LeafyGreen,PersonStanding, Zap, CheckCircle, RotateCcw } from 'lucide-react';
+import { Calendar, Apple, Coffee, Moon, Sun, ChevronRight, RefreshCw, X, MessageSquare,BicepsFlexed,LeafyGreen,PersonStanding, Zap, CheckCircle, RotateCcw, TrendingDown, PartyPopper } from 'lucide-react';
 import { logMeal, deleteMealLog, getDailyDietLogs, deleteDailyDietLogs } from '../api/tracking';
 import { toast } from 'react-toastify';
 import MealCard from '../components/dashboard/MealCard';
+import { getActiveSocialEvent } from '../api/socialEventService';
+import FeastModeBanner from '../components/dashboard/FeastModeBanner';
 
 // CONSTANTS REMOVED (Moved to MealCard or unused)
 
@@ -56,7 +58,8 @@ const DietPlan = ({ isEmbedded = false }) => {
     showProfileUpdateWarning, 
     handleGenerate: generatePlan,
     handleRegenerate,
-    isPlanExpired
+    isPlanExpired,
+    refreshPlan
   } = useDietPlan(onGenerateStart, onGenerateEnd);
 
   const [showCustomPromptModal, setShowCustomPromptModal] = useState(false);
@@ -66,6 +69,13 @@ const DietPlan = ({ isEmbedded = false }) => {
   const [pendingPrompt, setPendingPrompt] = useState(null);
   
   const regenerateMenuRef = useRef(null);
+
+  // Feast Mode State
+  const [socialEvent, setSocialEvent] = useState(null);
+
+  useEffect(() => {
+    getActiveSocialEvent().then(event => setSocialEvent(event));
+  }, []);
 
   // State for persistence
   const [loggedMeals, setLoggedMeals] = useState([]);
@@ -304,6 +314,17 @@ const DietPlan = ({ isEmbedded = false }) => {
         </div>
       )}
 
+      {/* Feast Mode Banner */}
+      {socialEvent && (
+        <FeastModeBanner 
+          event={socialEvent} 
+          onUpdate={() => {
+            getActiveSocialEvent().then(event => setSocialEvent(event));
+            refreshPlan();
+          }} 
+        />
+      )}
+
       {/* Hero / Header Section */}
       <div className={`${isEmbedded ? 'pt-4' : 'pt-20'} bg-white border-b border-gray-100 shadow-sm relative overflow-hidden flex-shrink-0 z-10`}>
          <div className="absolute inset-0 bg-gradient-to-r from-indigo-50/50 to-white pointer-events-none"></div>
@@ -313,9 +334,21 @@ const DietPlan = ({ isEmbedded = false }) => {
                   <h1 className="text-3xl font-black text-gray-900 tracking-tight mb-1">
                     Your Daily <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-indigo-400">Nutrition</span>
                   </h1>
-                  <p className="text-sm text-gray-500 font-medium max-w-sm mx-auto lg:mx-0">
-                    Your personalized plan designed to help you achieve your goal efficiently.
-                  </p>
+                  {socialEvent && socialEvent.status === 'BANKING' ? (
+                    <p className="text-sm font-semibold text-purple-600 mt-1 flex items-center gap-1.5 flex-wrap">
+                      🏦 Banking {Math.round(socialEvent.daily_deduction)} kcal/day for <span className="font-black">{socialEvent.event_name}</span>
+                      <span className="text-gray-400 mx-1">•</span>
+                      Today's target: {plan ? Math.round(plan.daily_generated_totals?.calories || 0) : '—'} kcal
+                    </p>
+                  ) : socialEvent && socialEvent.status === 'FEAST_DAY' ? (
+                    <p className="text-sm font-semibold text-amber-600 mt-1 flex items-center gap-1.5 flex-wrap">
+                      🎉 Feast Day! +{socialEvent.target_bank_calories} kcal bonus for <span className="font-black">{socialEvent.event_name}</span>
+                    </p>
+                  ) : (
+                    <p className="text-sm text-gray-500 font-medium max-w-sm mx-auto lg:mx-0">
+                      Your personalized plan designed to help you achieve your goal efficiently.
+                    </p>
+                  )}
                </div>
                
                {/* Meters Section */}
@@ -461,6 +494,8 @@ const DietPlan = ({ isEmbedded = false }) => {
                         meal={meal} 
                         loggedMeals={loggedMeals}
                         onLogUpdate={fetchLogs}
+                        socialEvent={socialEvent}
+                        onPlanRefresh={refreshPlan}
                      />
                   ))}
                </div>

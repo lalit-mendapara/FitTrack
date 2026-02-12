@@ -2535,3 +2535,467 @@ def adjust_todays_meal_plan(db: Session, user_id: int, target_calories: int, com
         "diff_applied": current_planned_calories * (ratio - 1),
         "changes": changes_log
     }
+
+
+def adjust_meals_with_llm(db: Session, user_id: int, target_calories: int, completed_meals: List[str]):
+    """
+    Feast Mode Agent: LLM-powered smart meal adjustment.
+    
+    Instead of uniformly scaling all meals by the same ratio, this function:
+    1. Sends current meals + calorie delta to the LLM
+    2. LLM decides per-meal adjustments (protects protein, reduces snacks first)
+    3. Returns adjusted meals with per-meal notes explaining changes
+    4. Falls back to ratio-based adjust_todays_meal_plan() if LLM fails
+    
+    Args:
+        db: Database session
+        user_id: User ID
+        target_calories: The NEW effective daily target
+        completed_meals: List of meal IDs already logged
+    """
+    from app.services import llm_service
+    
+    # 1. Fetch User Profile & Meal Plan
+    profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+    if not profile:
+        return {"error": "Profile not found"}
+    
+    plan_items = db.query(MealPlan).filter(MealPlan.user_profile_id == profile.id).all()
+    if not plan_items:
+        return {"error": "No meal plan found"}
+    
+    # 2. Categorize meals
+    completed_norm = [m.lower() for m in completed_meals]
+    
+    def get_nutrient_val(nuts, keys):
+        nuts = nuts or {}
+        for k in keys:
+            try:
+                val = float(nuts.get(k) or 0)
+                if val > 0: return val
+            except (ValueError, TypeError):
+                continue
+        return 0.0
+    
+    def get_calories(item):
+        nuts = item.nutrients or {}
+        p = get_nutrient_val(nuts, ['protein', 'p'])
+        c = get_nutrient_val(nuts, ['carbs', 'c'])
+        f = get_nutrient_val(nuts, ['fat', 'f'])
+        return (p * 4) + (c * 4) + (f * 9)
+    
+    consumed_calories = 0
+    remaining_items = []
+    remaining_items_data = []
+    
+    for item in plan_items:
+        cal = get_calories(item)
+        if item.meal_id.lower() in completed_norm:
+            consumed_calories += cal
+        else:
+            remaining_items.append(item)
+            nuts = item.nutrients or {}
+            remaining_items_data.append({
+                "meal_id": item.meal_id,
+                "label": item.label,
+                "dish_name": item.dish_name,
+                "portion_size": item.portion_size,
+                "calories": round(cal),
+                "protein": round(get_nutrient_val(nuts, ['protein', 'p']), 1),
+                "carbs": round(get_nutrient_val(nuts, ['carbs', 'c']), 1),
+                "fat": round(get_nutrient_val(nuts, ['fat', 'f']), 1),
+            })
+    
+    remaining_budget = target_calories - consumed_calories
+    current_planned = sum(d["calories"] for d in remaining_items_data)
+    diff = remaining_budget - current_planned
+    
+    logger.info(f"[FeastAgent] Target: {target_calories}, Consumed: {consumed_calories}, " 
+                f"Budget: {remaining_budget}, Planned: {current_planned}, Diff: {diff}")
+    
+    # Small threshold
+    if abs(diff) < 20:
+        return {"message": "No adjustment needed (within threshold)", "diff": 0}
+    
+    # 3. Build LLM Prompt
+    direction = "REDUCE" if diff < 0 else "INCREASE"
+    abs_diff = abs(round(diff))
+    
+    system_prompt = """You are a nutrition adjustment agent for a meal planning app.
+Your job is to adjust the remaining meals to meet a new calorie target.
+
+RULES:
+1. PROTECT PROTEIN: Never reduce protein by more than 5%. Protein is sacred for muscle preservation.
+2. REDUCE SNACKS FIRST: When cutting calories, reduce snack portions before touching main meals.
+3. CARBS ARE FLEXIBLE: Carbs (rice, bread, roti) are the easiest to adjust without impacting satiety.
+4. FAT IS SECONDARY: After carbs, adjust fat content slightly if needed.
+5. KEEP DISH NAMES: Never change the dish itself, only adjust portion sizes and nutrients.
+6. PROVIDE NOTES: For each adjusted meal, provide a short human-readable note explaining the change.
+
+Respond in JSON format:
+{
+  "adjusted_meals": [
+    {
+      "meal_id": "breakfast",
+      "portion_size": "updated portion string",
+      "protein": 25.0,
+      "carbs": 40.0,
+      "fat": 10.0,
+      "note": "Reduced rice from 150g to 100g (-80 kcal)"
+    }
+  ]
+}"""
+
+    meals_str = json.dumps(remaining_items_data, indent=2)
+    
+    user_prompt = f"""Current remaining meals:
+{meals_str}
+
+TASK: {direction} total calories by {abs_diff} kcal.
+Current total: {current_planned} kcal → Target remaining: {remaining_budget} kcal.
+
+Adjust each meal's portion_size, protein, carbs, and fat values accordingly.
+Include a "note" for each meal explaining what changed.
+Return ALL meals (even unchanged ones with note "No change needed")."""
+
+    # 4. Call LLM
+    try:
+        response = llm_service.call_llm_json(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            temperature=0.1,
+            max_tokens=4000
+        )
+        
+        if not response or "adjusted_meals" not in response:
+            raise ValueError("LLM returned invalid response")
+        
+        adjusted = response["adjusted_meals"]
+        
+        # 5. Apply LLM adjustments to DB
+        meal_map = {item.meal_id.lower(): item for item in remaining_items}
+        changes_log = []
+        
+        for adj in adjusted:
+            m_id = adj.get("meal_id", "").lower()
+            if m_id not in meal_map:
+                continue
+            
+            item = meal_map[m_id]
+            old_cal = get_calories(item)
+            
+            new_p = float(adj.get("protein", 0))
+            new_c = float(adj.get("carbs", 0))
+            new_f = float(adj.get("fat", 0))
+            new_cal = (new_p * 4) + (new_c * 4) + (new_f * 9)
+            
+            # Update nutrients
+            new_nuts = dict(item.nutrients or {})
+            new_nuts['p'] = round(new_p, 1)
+            new_nuts['c'] = round(new_c, 1)
+            new_nuts['f'] = round(new_f, 1)
+            new_nuts['protein'] = new_nuts['p']
+            new_nuts['carbs'] = new_nuts['c']
+            new_nuts['fat'] = new_nuts['f']
+            new_nuts['calories'] = round(new_cal)
+            if 'cal' in new_nuts:
+                new_nuts['cal'] = new_nuts['calories']
+            
+            item.nutrients = new_nuts
+            flag_modified(item, "nutrients")
+            
+            # Update portion size
+            new_portion = adj.get("portion_size", item.portion_size)
+            item.portion_size = new_portion
+            
+            # Update feast notes
+            note = adj.get("note", "")
+            if note:
+                item.feast_notes = [note]
+                flag_modified(item, "feast_notes")
+            
+            changes_log.append(f"{m_id}: {old_cal:.0f} → {new_cal:.0f} kcal | {note}")
+        
+        db.commit()
+        
+        logger.info(f"[FeastAgent] LLM adjustment applied: {changes_log}")
+        return {
+            "message": "Plan adjusted with smart LLM agent",
+            "method": "llm",
+            "diff_applied": diff,
+            "changes": changes_log
+        }
+        
+    except Exception as e:
+        logger.warning(f"[FeastAgent] LLM adjustment failed ({e}), falling back to ratio-based")
+        # Fallback to existing ratio-based method
+        return adjust_todays_meal_plan(db, user_id, target_calories, completed_meals)
+
+
+def skip_meal_and_redistribute(db: Session, user_id: int, meal_id: str, redistribute_to: List[str] = None, is_feast_day: bool = True):
+    """
+    Feast Mode: Skip a meal.
+    
+    - On FEAST DAY (is_feast_day=True): Redistribute freed calories to remaining meals
+    - On BANKING DAY (is_feast_day=False): Just zero the meal (extra calories banked)
+    
+    Args:
+        db: Database session
+        user_id: User ID
+        meal_id: The meal_id to skip (e.g. "snack")
+        redistribute_to: Optional list of meal_ids to receive the calories (default: all remaining)
+        is_feast_day: Whether today is the feast day (True) or a banking day (False)
+    """
+    from app.services import llm_service
+    
+    # 1. Fetch Profile & Plan
+    profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+    if not profile:
+        return {"error": "Profile not found"}
+    
+    plan_items = db.query(MealPlan).filter(MealPlan.user_profile_id == profile.id).all()
+    if not plan_items:
+        return {"error": "No meal plan found"}
+    
+    # 2. Find the meal to skip
+    meal_map = {item.meal_id.lower(): item for item in plan_items}
+    skip_key = meal_id.lower()
+    
+    if skip_key not in meal_map:
+        return {"error": f"Meal '{meal_id}' not found in plan"}
+    
+    skipped = meal_map[skip_key]
+    
+    # Calculate freed calories
+    def get_nutrient_val(nuts, keys):
+        nuts = nuts or {}
+        for k in keys:
+            try:
+                val = float(nuts.get(k) or 0)
+                if val > 0: return val
+            except (ValueError, TypeError):
+                continue
+        return 0.0
+    
+    old_nuts = skipped.nutrients or {}
+    freed_p = get_nutrient_val(old_nuts, ['protein', 'p'])
+    freed_c = get_nutrient_val(old_nuts, ['carbs', 'c'])
+    freed_f = get_nutrient_val(old_nuts, ['fat', 'f'])
+    freed_cal = (freed_p * 4) + (freed_c * 4) + (freed_f * 9)
+    
+    if freed_cal < 10:
+        return {"error": "Meal already has negligible calories"}
+    
+    # 3. Zero out skipped meal
+    skipped.nutrients = {"p": 0, "c": 0, "f": 0, "protein": 0, "carbs": 0, "fat": 0, "calories": 0, "cal": 0}
+    flag_modified(skipped, "nutrients")
+    skipped.portion_size = "SKIPPED"
+    
+    # 4. Banking day — just zero meal, don't redistribute
+    if not is_feast_day:
+        skipped.feast_notes = [f"BANKED:{round(freed_cal)} kcal saved by skipping this meal"]
+        flag_modified(skipped, "feast_notes")
+        db.commit()
+        return {"message": f"Skipped {meal_id} — {round(freed_cal)} kcal banked!", "freed_cal": round(freed_cal), "banked": True}
+    
+    # 5. Feast day — redistribute freed calories to remaining meals
+    skipped.feast_notes = ["SKIPPED"]
+    flag_modified(skipped, "feast_notes")
+    
+    # Determine receiving meals
+    # Check completed meals from food logs
+    from app.models.tracking import FoodLog
+    from datetime import date as date_type
+    today = date_type.today()
+    logs = db.query(FoodLog).filter(FoodLog.user_id == user_id, FoodLog.date == today).all()
+    completed_meals = list(set([l.meal_type.lower() for l in logs]))
+    
+    if redistribute_to:
+        receiver_keys = [m.lower() for m in redistribute_to]
+    else:
+        # All remaining meals except skipped and completed
+        receiver_keys = [
+            k for k in meal_map.keys() 
+            if k != skip_key and k not in completed_meals
+        ]
+    
+    if not receiver_keys:
+        db.commit()
+        return {"message": f"Skipped {meal_id} but no remaining meals to redistribute to", "freed_cal": freed_cal}
+    
+    receivers = [meal_map[k] for k in receiver_keys if k in meal_map]
+    
+    # 5. Try LLM redistribution
+    try:
+        receiver_data = []
+        for item in receivers:
+            nuts = item.nutrients or {}
+            p = get_nutrient_val(nuts, ['protein', 'p'])
+            c = get_nutrient_val(nuts, ['carbs', 'c'])
+            f = get_nutrient_val(nuts, ['fat', 'f'])
+            cal = (p * 4) + (c * 4) + (f * 9)
+            receiver_data.append({
+                "meal_id": item.meal_id,
+                "label": item.label,
+                "dish_name": item.dish_name,
+                "portion_size": item.portion_size,
+                "calories": round(cal),
+                "protein": round(p, 1),
+                "carbs": round(c, 1),
+                "fat": round(f, 1),
+            })
+        
+        system_prompt = """You are a nutrition redistribution agent. A user has skipped a meal and the freed calories need to be redistributed to remaining meals.
+
+RULES:
+1. PROTEIN BOOST: Use the extra budget to boost protein where possible.
+2. BALANCED SPREAD: Don't dump all extra calories into one meal. Spread reasonably.
+3. PORTION LOGIC: Increase portions of existing ingredients (e.g., more rice, more chicken).
+4. PROVIDE NOTES: Each meal gets a note like "Extra 120 kcal from skipped Snack!"
+
+Respond in JSON:
+{
+  "redistributed_meals": [
+    {
+      "meal_id": "dinner",
+      "portion_size": "updated portion string",
+      "protein": 35.0,
+      "carbs": 60.0,
+      "fat": 15.0,
+      "note": "Extra 120 kcal from skipped Snack! Added 50g rice and 30g chicken."
+    }
+  ]
+}"""
+
+        skipped_label = skipped.label or meal_id.capitalize()
+        meals_str = json.dumps(receiver_data, indent=2)
+        
+        user_prompt = f"""Skipped meal: {skipped_label} ({round(freed_cal)} kcal, P:{freed_p:.0f}g C:{freed_c:.0f}g F:{freed_f:.0f}g)
+
+Remaining meals to receive the extra calories:
+{meals_str}
+
+Redistribute the {round(freed_cal)} freed calories across these meals.
+Update portion_size, protein, carbs, fat for each meal.
+Include a "note" explaining what was added."""
+
+        response = llm_service.call_llm_json(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            temperature=0.1,
+            max_tokens=4000
+        )
+        
+        if not response or "redistributed_meals" not in response:
+            raise ValueError("LLM returned invalid response")
+        
+        redistributed = response["redistributed_meals"]
+        changes_log = []
+        
+        for adj in redistributed:
+            m_id = adj.get("meal_id", "").lower()
+            if m_id not in meal_map:
+                continue
+            
+            item = meal_map[m_id]
+            
+            new_p = float(adj.get("protein", 0))
+            new_c = float(adj.get("carbs", 0))
+            new_f = float(adj.get("fat", 0))
+            new_cal = (new_p * 4) + (new_c * 4) + (new_f * 9)
+            
+            new_nuts = dict(item.nutrients or {})
+            new_nuts['p'] = round(new_p, 1)
+            new_nuts['c'] = round(new_c, 1)
+            new_nuts['f'] = round(new_f, 1)
+            new_nuts['protein'] = new_nuts['p']
+            new_nuts['carbs'] = new_nuts['c']
+            new_nuts['fat'] = new_nuts['f']
+            new_nuts['calories'] = round(new_cal)
+            if 'cal' in new_nuts:
+                new_nuts['cal'] = new_nuts['calories']
+            
+            item.nutrients = new_nuts
+            flag_modified(item, "nutrients")
+            
+            new_portion = adj.get("portion_size", item.portion_size)
+            item.portion_size = new_portion
+            
+            note = adj.get("note", f"Extra {round(freed_cal / len(receivers))} kcal from skipped {skipped_label}!")
+            item.feast_notes = [note]
+            flag_modified(item, "feast_notes")
+            
+            changes_log.append(f"{m_id}: +{round(new_cal - receiver_data[0]['calories'])} kcal | {note}")
+        
+        db.commit()
+        
+        logger.info(f"[FeastAgent] Skip + Redistribute (LLM): {changes_log}")
+        return {
+            "message": f"Skipped {skipped_label} and redistributed {round(freed_cal)} kcal",
+            "method": "llm",
+            "freed_cal": round(freed_cal),
+            "changes": changes_log
+        }
+        
+    except Exception as e:
+        logger.warning(f"[FeastAgent] LLM redistribution failed ({e}), using even split")
+        
+        # Fallback: Even split of freed calories
+        import re
+        per_meal_extra_cal = freed_cal / len(receivers)
+        changes_log = []
+        
+        for item in receivers:
+            old_nuts = item.nutrients or {}
+            p = get_nutrient_val(old_nuts, ['protein', 'p'])
+            c = get_nutrient_val(old_nuts, ['carbs', 'c'])
+            f = get_nutrient_val(old_nuts, ['fat', 'f'])
+            old_cal = (p * 4) + (c * 4) + (f * 9)
+            
+            if old_cal > 0:
+                ratio = (old_cal + per_meal_extra_cal) / old_cal
+            else:
+                ratio = 1.0
+            
+            new_p = round(p * ratio, 1)
+            new_c = round(c * ratio, 1)
+            new_f = round(f * ratio, 1)
+            new_cal = (new_p * 4) + (new_c * 4) + (new_f * 9)
+            
+            new_nuts = dict(old_nuts)
+            new_nuts['p'] = new_p
+            new_nuts['c'] = new_c
+            new_nuts['f'] = new_f
+            new_nuts['protein'] = new_p
+            new_nuts['carbs'] = new_c
+            new_nuts['fat'] = new_f
+            new_nuts['calories'] = round(new_cal)
+            if 'cal' in new_nuts:
+                new_nuts['cal'] = new_nuts['calories']
+            
+            item.nutrients = new_nuts
+            flag_modified(item, "nutrients")
+            
+            # Scale portion string
+            def scale_portion_string(p_str, factor):
+                return re.sub(r'\b(\d+(\.\d+)?)\b', lambda m: f"{float(m.group(1)) * factor:.0f}", p_str)
+            
+            item.portion_size = scale_portion_string(item.portion_size, ratio)
+
+            skipped_label = skipped.label or meal_id.capitalize()
+            note = f"Extra {round(per_meal_extra_cal)} kcal from skipped {skipped_label}!"
+            item.feast_notes = [note]
+            flag_modified(item, "feast_notes")
+            
+            changes_log.append(f"{item.meal_id}: {old_cal:.0f} → {new_cal:.0f} kcal | {note}")
+        
+        db.commit()
+        
+        logger.info(f"[FeastAgent] Skip + Redistribute (fallback): {changes_log}")
+        return {
+            "message": f"Skipped {skipped_label} and redistributed {round(freed_cal)} kcal (ratio-based)",
+            "method": "fallback",
+            "freed_cal": round(freed_cal),
+            "changes": changes_log
+        }
+
