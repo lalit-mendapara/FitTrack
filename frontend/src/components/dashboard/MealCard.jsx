@@ -164,6 +164,11 @@ const MealCard = ({ meal, loggedMeals, onLogUpdate, socialEvent, onPlanRefresh }
                    <span className={`text-xs font-bold px-2.5 py-1 rounded-full uppercase tracking-wide ${meal.is_veg ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
                       {meal.is_veg ? 'Veg' : 'Non-Veg'}
                    </span>
+                   {meal.is_user_adjusted && (
+                       <span className="text-xs font-bold px-2.5 py-1 rounded-full uppercase tracking-wide bg-blue-100 text-blue-700 ml-2">
+                           Adjusted
+                       </span>
+                   )}
                 </div>
              </div>
              {/* Desktop Calories Display (Hidden on mobile if needed, but useful to keep) */}
@@ -188,6 +193,13 @@ const MealCard = ({ meal, loggedMeals, onLogUpdate, socialEvent, onPlanRefresh }
             </div>
           </div>
 
+          {/* Adjustment Note */}
+          {meal.is_user_adjusted && meal.adjustment_note && (
+             <div className="mb-4 px-3 py-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 text-xs font-semibold">
+               ✏️ {meal.adjustment_note}
+             </div>
+          )}
+
           {/* Feast Notes */}
           {meal.feast_notes && meal.feast_notes.length > 0 && (
             <div className="mb-4 space-y-1.5">
@@ -201,9 +213,9 @@ const MealCard = ({ meal, loggedMeals, onLogUpdate, socialEvent, onPlanRefresh }
                   : 'bg-amber-50 border-amber-200 text-amber-700';
                 return (
                   <div key={idx} className={`px-3 py-2 rounded-xl border text-xs font-semibold ${bgColor}`}>
-                    {isSkipped ? '⏭️ Meal Skipped — Calories redistributed'
-                      : isBanked ? `🏦 ${note.replace('BANKED:', '')}`
-                      : `✨ ${note}`}
+                    {isSkipped ? 'Meal Skipped — Calories redistributed'
+                      : isBanked ? `Banked: ${note.replace('BANKED:', '').trim()}`
+                      : note}
                   </div>
                 );
               })}

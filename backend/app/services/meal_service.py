@@ -12,6 +12,9 @@ from app.models.food_item import FoodItem
 from app.models.meal_plan import MealPlan
 from app.models.meal_plan_history import MealPlanHistory
 from app.schemas.meal_plan import MealPlanResponse, MealItem, NutrientDetail, NutrientTotals
+from app.crud.meal_plan import update_single_meal
+
+from app.services.vector_service import VectorService
 
 from app.services import llm_service
 from app.services import nutrition_service
@@ -2097,7 +2100,8 @@ RULES:
         
         history_entry = MealPlanHistory(
             user_profile_id=profile.id,
-            meal_plan_snapshot=snapshot
+            meal_plan_snapshot=snapshot,
+            change_reason="GENERATION"
         )
         db.add(history_entry)
         db.commit()
@@ -2732,6 +2736,175 @@ Return ALL meals (even unchanged ones with note "No change needed")."""
         return adjust_todays_meal_plan(db, user_id, target_calories, completed_meals)
 
 
+def estimate_food_calories(db: Session, food_descriptions: List[str]) -> Dict[str, float]:
+    """
+    Estimates scale/macros for user-described foods.
+    1. Tries exact DB lookup via find_food_item_by_name()
+    2. Falls back to VectorService semantic search
+    3. Falls back to LLM estimation with rough macro split (handled by caller if this returns partial)
+    
+    Returns: { 
+        "calories": float, 
+        "protein": float, 
+        "carbs": float, 
+        "fat": float, 
+        "items": [list of details] 
+    }
+    """
+    total_cal = 0.0
+    total_p = 0.0
+    total_c = 0.0
+    total_f = 0.0
+    found_details = []
+    
+    vector_service = VectorService()
+    
+    for desc in food_descriptions:
+        desc = desc.strip()
+        if not desc: continue
+        
+        # 1. Try Exact/Partial DB Lookup
+        food_item = find_food_item_by_name(db, desc)
+        
+        # 2. Try Vector Search if not found
+        if not food_item:
+            results = vector_service.search_food(desc, limit=1, threshold=0.6)
+            if results:
+                # Mock a FoodItem from payload
+                payload = results[0]
+                food_item = FoodItem(
+                    name=payload.get('name', desc),
+                    protein_g=payload.get('protein', 0),
+                    carb_g=payload.get('carbs', 0),
+                    fat_g=payload.get('fat', 0),
+                    calories_kcal=payload.get('calories', 0),
+                    serving_size_g=payload.get('serving_size', 100)
+                )
+        
+        if food_item:
+            # Assume 1 standard serving (approx 100g or 1 unit) if no qty specified
+            # In a real app, we'd parse "2 slices" etc., but for now we assume 1.5x serving for "eating out" generosity
+            multiplier = 1.0
+            
+            cal = float(food_item.calories_kcal) * multiplier
+            p = float(food_item.protein_g) * multiplier
+            c = float(food_item.carb_g) * multiplier
+            f = float(food_item.fat_g) * multiplier
+            
+            total_cal += cal
+            total_p += p
+            total_c += c
+            total_f += f
+            
+            found_details.append(f"{desc} (~{int(cal)} kcal)")
+        else:
+            # 3. Not found - Caller/LLM will have to guess, or we use a fallback average
+            # Fallback: 250kcal per unidentified "item" (safe buffer)
+            print(f"[Estimate] Could not find '{desc}', assuming generic 250kcal.")
+            total_cal += 250
+            total_p += 10
+            total_c += 30
+            total_f += 10
+            found_details.append(f"{desc} (Est. 250 kcal)")
+
+    return {
+        "calories": total_cal,
+        "protein": total_p,
+        "carbs": total_c,
+        "fat": total_f,
+        "details": found_details
+    }
+
+
+def adjust_single_meal(db: Session, user_id: int, meal_id: str, override_info: Dict) -> Dict:
+    """
+    Replaces a single meal with user override info.
+    
+    Args:
+        override_info: {
+            dish_name: str,
+            estimated_calories: float,
+            estimated_macros: { p, c, f } (optional),
+            reason: str
+        }
+        
+    Returns:
+        Result dict including the updated meal object.
+    """
+    # 1. Fetch Profile
+    profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+    if not profile:
+        return {"error": "Profile not found"}
+        
+    # 2. Prepare Update Data
+    new_cal = float(override_info.get("estimated_calories", 0))
+    macros = override_info.get("estimated_macros", {})
+    
+    # If macros missing, infer from calories using 40/30/30 split (rough estimate)
+    if not macros or sum(macros.values()) == 0:
+        p_cal = new_cal * 0.30
+        c_cal = new_cal * 0.40
+        f_cal = new_cal * 0.30
+        mac_p = round(p_cal / 4, 1)
+        mac_c = round(c_cal / 4, 1)
+        mac_f = round(f_cal / 9, 1)
+    else:
+        mac_p = macros.get("p", 0)
+        mac_c = macros.get("c", 0)
+        mac_f = macros.get("f", 0)
+        
+    update_data = {
+        "dish_name": override_info.get("dish_name", "User Adjusted Meal"),
+        "portion_size": "User Estimated",
+        "nutrients": {
+            "p": mac_p, "c": mac_c, "f": mac_f,
+            "protein": mac_p, "carbs": mac_c, "fat": mac_f,
+            "calories": new_cal, "cal": new_cal
+        },
+        "guidelines": [f"Adjusted via AI Coach: {override_info.get('reason', 'Manual override')}"],
+        "is_user_adjusted": True,
+        "adjustment_note": f"{override_info.get('reason', 'Eating out')} ({int(new_cal)} kcal)"
+    }
+    
+    # 3. Perform Update
+    updated_meal = update_single_meal(db, profile.id, meal_id, update_data)
+    
+    if not updated_meal:
+        return {"error": f"Meal '{meal_id}' not found in current plan"}
+        
+    # 4. Save to History (Snapshot)
+    # We should grab the FULL plan now to save a coherent snapshot
+    full_plan = db.query(MealPlan).filter(MealPlan.user_profile_id == profile.id).all()
+    try:
+        snapshot = [
+            {
+                "meal_id": m.meal_id,
+                "label": m.label,
+                "dish_name": m.dish_name,
+                "portion_size": m.portion_size,
+                "nutrients": m.nutrients,
+                "is_user_adjusted": m.is_user_adjusted,
+                "adjustment_note": m.adjustment_note
+            }
+            for m in full_plan
+        ]
+        history_entry = MealPlanHistory(
+            user_profile_id=profile.id,
+            meal_plan_snapshot=snapshot,
+            change_reason="USER_ADJUSTMENT"
+        )
+        db.add(history_entry)
+        db.commit()
+    except Exception as e:
+        logger.error(f"Failed to save history on adjustment: {e}")
+
+    return {
+        "message": f"Successfully updated {meal_id}",
+        "meal": updated_meal,
+        "calories": new_cal
+    }
+
+
 def skip_meal_and_redistribute(db: Session, user_id: int, meal_id: str, redistribute_to: List[str] = None, is_feast_day: bool = True):
     """
     Feast Mode: Skip a meal.
@@ -2998,4 +3171,80 @@ Include a "note" explaining what was added."""
             "freed_cal": round(freed_cal),
             "changes": changes_log
         }
+
+
+def restore_original_plan(db: Session, user_id: int):
+    """
+    Restores the meal plan to the state of the last GENERATION event.
+    Reverts all user adjustments (Feast Mode, Single Meal Adjustments, etc.)
+    """
+    logger.info(f"Restoring original meal plan for user {user_id}")
+    
+    # 1. Get User Profile
+    profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+    if not profile:
+        raise ValueError("UserProfile not found")
+        
+    # 2. Find latest "GENERATION" snapshot
+    original_snapshot = db.query(MealPlanHistory)\
+        .filter(MealPlanHistory.user_profile_id == profile.id)\
+        .filter(MealPlanHistory.change_reason == "GENERATION")\
+        .order_by(MealPlanHistory.created_at.desc())\
+        .first()
+        
+    if not original_snapshot:
+        return {"error": "No original generated plan found to restore."}
+        
+    # 3. Validated snapshot content
+    if not original_snapshot.meal_plan_snapshot:
+        return {"error": "Snapshot exists but content is empty."}
+        
+    # 4. Clear current plan
+    db.query(MealPlan).filter(MealPlan.user_profile_id == profile.id).delete()
+    
+    # 5. Restore from snapshot
+    snapshot_data = original_snapshot.meal_plan_snapshot
+    new_rows = []
+    
+    for item in snapshot_data:
+        # Convert snapshot dict back to MealPlan object
+        # Note: snapshot keys match MealPlan columns
+        # However, we must ensure we don't pass extra keys if schema changed
+        # Minimal set: meal_id, label, dish_name, portion_size, nutrients, alternatives, guidelines, is_veg
+        
+        # We explicitly reset is_user_adjusted to False (it should be False in GEN snapshot anyway)
+        
+        meal = MealPlan(
+            user_profile_id=profile.id,
+            meal_id=item.get("meal_id"),
+            label=item.get("label"),
+            dish_name=item.get("dish_name"),
+            portion_size=item.get("portion_size"),
+            nutrients=item.get("nutrients"),
+            alternatives=item.get("alternatives"),
+            guidelines=item.get("guidelines"),
+            is_veg=item.get("is_veg"),
+            is_user_adjusted=False, # Force clean state
+            adjustment_note=None,
+            feast_notes=None
+        )
+        new_rows.append(meal)
+        
+    db.add_all(new_rows)
+    db.commit()
+    
+    # 6. Log this restoration in history?
+    # Yes, so we can undo the undo? Or just track it.
+    try:
+        restore_history = MealPlanHistory(
+            user_profile_id=profile.id,
+            meal_plan_snapshot=original_snapshot.meal_plan_snapshot, # Same snapshot
+            change_reason="RESTORE"
+        )
+        db.add(restore_history)
+        db.commit()
+    except Exception as e:
+        logger.warning(f"Failed to log restore history: {e}")
+        
+    return {"message": "Successfully restored original meal plan."}
 

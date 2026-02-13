@@ -1,6 +1,6 @@
 from datetime import datetime
 from sqlalchemy import (
-    Column, Integer, ForeignKey, DateTime
+    Column, Integer, ForeignKey, DateTime, String
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
@@ -25,6 +25,13 @@ class MealPlanHistory(Base):
         JSONB,
         nullable=False,
         comment="Snapshot of the generated meal plan (list of meal objects)"
+    )
+
+    # Track origin of snapshot: GENERATION, USER_ADJUSTMENT, RESTORE, etc.
+    change_reason = Column(
+        String, 
+        default="UNKNOWN",
+        nullable=True
     )
 
     created_at = Column(DateTime, default=datetime.utcnow)

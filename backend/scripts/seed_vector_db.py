@@ -124,8 +124,11 @@ def main():
     client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
     
     # 2. Embeddings
+    # 2. Embeddings
     print(f"Initializing Ollama Embeddings ({EMBED_MODEL})...")
-    embeddings = OllamaEmbeddings(base_url="http://localhost:11434", model=EMBED_MODEL)
+    ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
+    print(f"Using OLLAMA_URL: {ollama_url}")
+    embeddings = OllamaEmbeddings(base_url=ollama_url, model=EMBED_MODEL)
     
     # 3. Setup
     setup_collections(client)

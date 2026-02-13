@@ -20,6 +20,8 @@ class MealItem(BaseModel):
     alternatives: List[str]
     guidelines: List[str]
     feast_notes: Optional[List[str]] = None
+    is_user_adjusted: Optional[bool] = False
+    adjustment_note: Optional[str] = None
 
 class NutrientTotals(BaseModel):
     calories: float

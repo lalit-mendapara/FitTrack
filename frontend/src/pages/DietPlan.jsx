@@ -59,7 +59,8 @@ const DietPlan = ({ isEmbedded = false }) => {
     handleGenerate: generatePlan,
     handleRegenerate,
     isPlanExpired,
-    refreshPlan
+    refreshPlan,
+    handleResetPlan
   } = useDietPlan(onGenerateStart, onGenerateEnd);
 
   const [showCustomPromptModal, setShowCustomPromptModal] = useState(false);
@@ -336,13 +337,13 @@ const DietPlan = ({ isEmbedded = false }) => {
                   </h1>
                   {socialEvent && socialEvent.status === 'BANKING' ? (
                     <p className="text-sm font-semibold text-purple-600 mt-1 flex items-center gap-1.5 flex-wrap">
-                      🏦 Banking {Math.round(socialEvent.daily_deduction)} kcal/day for <span className="font-black">{socialEvent.event_name}</span>
+                      Banking {Math.round(socialEvent.daily_deduction)} kcal/day for <span className="font-black">{socialEvent.event_name}</span>
                       <span className="text-gray-400 mx-1">•</span>
                       Today's target: {plan ? Math.round(plan.daily_generated_totals?.calories || 0) : '—'} kcal
                     </p>
                   ) : socialEvent && socialEvent.status === 'FEAST_DAY' ? (
                     <p className="text-sm font-semibold text-amber-600 mt-1 flex items-center gap-1.5 flex-wrap">
-                      🎉 Feast Day! +{socialEvent.target_bank_calories} kcal bonus for <span className="font-black">{socialEvent.event_name}</span>
+                      Feast Day: +{socialEvent.target_bank_calories} kcal bonus for <span className="font-black">{socialEvent.event_name}</span>
                     </p>
                   ) : (
                     <p className="text-sm text-gray-500 font-medium max-w-sm mx-auto lg:mx-0">
@@ -448,7 +449,21 @@ const DietPlan = ({ isEmbedded = false }) => {
             <>
                <div className="flex justify-between items-center mb-6 px-1">
                    <h2 className="text-2xl font-black text-gray-800 tracking-tight">Today's Meals</h2>
-                   <div className="relative" ref={regenerateMenuRef}>
+                   <div className="flex gap-2">
+                       {/* Reset Button (Only if adjusted) */}
+                       {plan.meal_plan?.some(m => m.is_user_adjusted) && (
+                           <button
+                               onClick={handleResetPlan}
+                               disabled={generating}
+                               className="flex items-center gap-2 px-3 py-2 md:px-5 md:py-2.5 bg-amber-50 rounded-xl shadow-sm border border-amber-100 text-amber-600 font-bold text-xs md:text-sm hover:bg-amber-100 transition-colors"
+                               title="Reset to original plan"
+                           >
+                               <RotateCcw className={`w-4 h-4 md:w-[18px] md:h-[18px] ${generating ? "animate-spin-reverse" : ""}`} />
+                               Reset
+                           </button>
+                       )}
+
+                       <div className="relative" ref={regenerateMenuRef}>
                         <button 
                             onClick={() => setShowRegenerateOptions(!showRegenerateOptions)}
                             disabled={generating}
@@ -474,7 +489,7 @@ const DietPlan = ({ isEmbedded = false }) => {
                                 <button
                                     onClick={() => {
                                         setShowRegenerateOptions(false);
-                                        setCustomPrompt(""); // Clear the textarea
+                                        setCustomPrompt("");
                                         setShowCustomPromptModal(true);
                                     }}
                                     className="w-full text-left px-4 py-3 text-sm font-medium text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 flex items-center gap-2 transition-colors"
@@ -484,6 +499,7 @@ const DietPlan = ({ isEmbedded = false }) => {
                                 </button>
                             </div>
                         )}
+                   </div>
                    </div>
                </div>
                

@@ -131,3 +131,8 @@ uploaded_image_*.png
 uploaded_image_*.jpg
 
 # backup
+*.sql
+*.sql.gz
+backup/
+backups/
+db_backup/

@@ -21,3 +21,8 @@ export const regenerateMealPlan = async () => {
     const response = await api.post('/meal-plans/regenerate');
     return response.data;
 };
+
+export const resetMealPlan = async () => {
+    const response = await api.post('/meal-plans/reset');
+    return response.data;
+};

@@ -30,8 +30,8 @@ class StatsService:
             
         # Check for active Social Event (Feast Mode)
         try:
-            from app.services.social_event_service import get_active_social_event
-            social_event = get_active_social_event(self.db, user_id)
+            from app.services.social_event_service import get_active_event
+            social_event = get_active_event(self.db, user_id)
             
             calorie_target = result.calories
             if social_event and social_event.is_active:

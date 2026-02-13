@@ -38,6 +38,7 @@ class GraphState(TypedDict):
     # Internal Context
     intent_data: Optional[Dict[str, Any]]
     social_event_data: Optional[Dict[str, Any]]
+    meal_adjustment_data: Optional[Dict[str, Any]]
     historical_context_str: Optional[str]
     user_context: Dict[str, Any]
     food_knowledge: List[Dict[str, Any]]
@@ -190,7 +191,55 @@ class FitnessCoachService:
 
 
 
-    def _get_historical_plan(self, user_id: int, target_date: date) -> dict:
+    def _detect_meal_adjustment_intent(self, message: str) -> Optional[Dict[str, Any]]:
+        """
+        Detects if user wants to adjust a specific meal (e.g. eating out, skipping).
+        Returns dict with target_meal, reason, user_estimated_calories, user_foods.
+        """
+        # Quick keyword check to save LLM calls
+        keywords = ['eat out', 'eating out', 'ordering', 'skip', 'change', 'adjust', 'pizza', 'burger', 'party', 'dinner', 'lunch', 'breakfast']
+        if not any(k in message.lower() for k in keywords):
+            return None
+            
+        system_prompt = """Analyze if the user wants to ADJUST or OVERRIDE a specific meal in their plan.
+        
+        Possible scenarios:
+        1. Eating out / Ordering in ("I'm having pizza for dinner")
+        2. Skipping a meal ("Skip lunch today")
+        3. Adjustment ("Change my snack to an apple")
+        
+        Output JSON ONLY:
+        {
+            "is_adjustment": true/false,
+            "target_meal": "breakfast" | "lunch" | "dinner" | "snack",
+            "reason": "eating_out" | "skip" | "custom_food" | "other",
+            "user_foods": ["pizza", "beer"],
+            "user_estimated_calories": 1500 (number or null),
+            "confidence": 0.0-1.0
+        }
+        
+        Rules:
+        - If user just says "I ate pizza", that is a LOGGING intent, NOT adjustment. 
+          Adjustment implies FUTURE or PRESENT ("I WILL eat", "I AM eating", "Change my plan").
+        - If user says "I ate" (past tense), set is_adjustment: false.
+        """
+        
+        try:
+            from app.services.llm_service import call_llm_json
+            result = call_llm_json(system_prompt=system_prompt, user_prompt=message, temperature=0.0)
+            
+            if result and result.get("is_adjustment") and result.get("confidence", 0) > 0.7:
+                return {
+                    "type": "proposal",
+                    "target_meal": result.get("target_meal"),
+                    "reason": result.get("reason"),
+                    "user_foods": result.get("user_foods", []),
+                    "user_estimated_calories": result.get("user_estimated_calories")
+                }
+        except Exception as e:
+            print(f"Error checking meal adjustment intent: {e}")
+            
+        return None
         """
         Forensic Retrieval:
         1. Fetches ALL plan snapshots for that day.
@@ -346,51 +395,62 @@ class FitnessCoachService:
 
     @observe(name="node_detect_intent")
     async def _node_detect_intent(self, state: GraphState) -> GraphState:
-        """Node: Detects if user is asking about history or social events."""
+        """Node: Detects if user is asking about history or social events or meal adjustments."""
         msg = state["user_message"]
         
-        # 1. Check History Intent
-        history_intent = self._detect_history_intent(msg)
-        if history_intent:
-            return {"intent_data": history_intent, "social_event_data": None}
-            
-        # 2. Check Social Event Intent
-        social_intent = self._detect_social_event_intent(msg)
-        if social_intent:
-            return {"intent_data": None, "social_event_data": social_intent}
-            
-        # 3. Check for Feast Mode Confirmation/Customization
-        # If the last AI message was a Feast Mode Proposal, use LLM to understand
-        # if the user is confirming, customizing, or rejecting the proposal.
+        # 0. Check for Confirmations (Multi-turn)
         memory = ChatMemoryService(state["session_id"])
         last_ai_msg = memory.get_last_ai_message()
+        if last_ai_msg:
+             # A. Check Meal Adjustment Confirmation
+             if "Meal Adjustment Proposal" in last_ai_msg:
+                 # Helper to parse confirmation
+                 from app.services.llm_service import call_llm_json
+                 confirm_prompt = f"""The AI proposed adjusting a meal based on the user's request.
+                 User reply: "{msg}"
+                 
+                 Output JSON:
+                 {{
+                    "action": "confirm" | "reject",
+                    "reason": "explanation"
+                 }}
+                 """
+                 try:
+                     res = call_llm_json(system_prompt=confirm_prompt, user_prompt=msg, temperature=0.0)
+                     if res and res.get("action") == "confirm":
+                         pending = memory.get_session_data("pending_meal_adjustment")
+                         if pending:
+                             return {"intent_data": None, 
+                                     "social_event_data": None, 
+                                     "meal_adjustment_data": {"type": "confirm", "data": pending}}
+                 except Exception as e:
+                     print(f"Error parsing confirmation: {e}")
 
-        if last_ai_msg and "Feast Mode Proposal" in last_ai_msg:
-            import re
-            # Extract event details from proposal via regex
-            match = re.search(r"Event\*\*:?\s*(.*?)\s*\((\d{4}-\d{2}-\d{2})\)", last_ai_msg)
-            if match:
-                event_name = match.group(1).strip()
-                event_date_str = match.group(2)
-                try:
-                    event_date = datetime.strptime(event_date_str, "%Y-%m-%d").date()
-                except ValueError:
-                    event_date = None
+             # B. Check Feast Mode Confirmation
+             if "Feast Mode Proposal" in last_ai_msg:
+                import re
+                match = re.search(r"Event\*\*:?\s*(.*?)\s*\((\d{4}-\d{2}-\d{2})\)", last_ai_msg)
+                if match:
+                    event_name = match.group(1).strip()
+                    event_date_str = match.group(2)
+                    try:
+                        event_date = datetime.strptime(event_date_str, "%Y-%m-%d").date()
+                    except ValueError:
+                        event_date = None
 
-                if event_date:
-                    # Use LLM to understand user's reply to the proposal
-                    from app.services.llm_service import call_llm_json
-                    confirm_prompt = f"""The AI assistant proposed a "Feast Mode" (calorie banking strategy) for an upcoming event.
+                    if event_date:
+                        from app.services.llm_service import call_llm_json
+                        confirm_prompt = f"""The AI assistant proposed a "Feast Mode" (calorie banking strategy) for an upcoming event.
 The proposal included: reducing daily calories and adding a special workout on event day.
 
 The user replied: "{msg}"
 
 Analyze the user's reply and output JSON ONLY:
 {{
-    "action": "confirm" or "customize" or "reject",
-    "custom_deduction": null,
-    "skip_workout": false,
-    "reason": "brief explanation"
+"action": "confirm" or "customize" or "reject",
+"custom_deduction": null,
+"skip_workout": false,
+"reason": "brief explanation"
 }}
 
 Rules:
@@ -409,44 +469,53 @@ Rules:
   - "no thanks" -> {{"action": "reject", "custom_deduction": null, "skip_workout": false, "reason": "user declined"}}
   - "what is feast mode?" -> {{"action": "reject", "custom_deduction": null, "skip_workout": false, "reason": "user asking for info"}}"""
 
-                    try:
-                        confirmation = call_llm_json(system_prompt=confirm_prompt, user_prompt=msg, temperature=0.0)
-                        if confirmation:
-                            action = confirmation.get("action", "reject")
-                            if action == "confirm":
-                                return {"intent_data": None, "social_event_data": {
-                                    "type": "confirm",
-                                    "event_name": event_name,
-                                    "event_date": event_date,
-                                    "skip_workout": confirmation.get("skip_workout", False)
-                                }}
-                            elif action == "customize":
-                                # Try to load pending event from memory if details are missing
-                                event_data = {
-                                    "type": "customize",
-                                    "event_name": event_name,
-                                    "event_date": event_date,
-                                    "custom_deduction": confirmation.get("custom_deduction"),
-                                    "skip_workout": confirmation.get("skip_workout", False)
-                                }
-                                
-                                # If we didn't extract event_name/date from the last message (regex failed),
-                                # try loading from session context
-                                if not event_name or not event_date:
-                                    saved_context = memory.get_session_data("pending_feast_event")
-                                    if saved_context:
-                                        print(f"[Feast Confirm] Loaded pending event from memory: {saved_context['event_name']}")
-                                        event_data["event_name"] = saved_context.get("event_name")
-                                        try:
-                                            event_data["event_date"] = datetime.strptime(saved_context.get("event_date"), "%Y-%m-%d").date()
-                                        except:
-                                            pass
-                                
-                                return {"intent_data": None, "social_event_data": event_data}
-                    except Exception as e:
-                        print(f"[Feast Confirm] LLM confirmation check failed: {e}")
+                        try:
+                            confirmation = call_llm_json(system_prompt=confirm_prompt, user_prompt=msg, temperature=0.0)
+                            if confirmation:
+                                action = confirmation.get("action", "reject")
+                                if action == "confirm":
+                                    return {"intent_data": None, "social_event_data": {
+                                        "type": "confirm",
+                                        "event_name": event_name,
+                                        "event_date": event_date,
+                                        "skip_workout": confirmation.get("skip_workout", False)
+                                    }, "meal_adjustment_data": None}
+                                elif action == "customize":
+                                    event_data = {
+                                        "type": "customize",
+                                        "event_name": event_name,
+                                        "event_date": event_date,
+                                        "custom_deduction": confirmation.get("custom_deduction"),
+                                        "skip_workout": confirmation.get("skip_workout", False)
+                                    }
+                                    if not event_name or not event_date:
+                                        saved_context = memory.get_session_data("pending_feast_event")
+                                        if saved_context:
+                                            event_data["event_name"] = saved_context.get("event_name")
+                                            try:
+                                                event_data["event_date"] = datetime.strptime(saved_context.get("event_date"), "%Y-%m-%d").date()
+                                            except: pass
+                                    return {"intent_data": None, "social_event_data": event_data, "meal_adjustment_data": None}
+                        except Exception as e:
+                            print(f"Feast confirm error: {e}")
 
-        return {"intent_data": None, "social_event_data": None}
+        # 1. Check History Intent
+        history_intent = self._detect_history_intent(msg)
+        if history_intent:
+            return {"intent_data": history_intent, "social_event_data": None}
+            
+        # 2. Check Social Event Intent
+        social_intent = self._detect_social_event_intent(msg)
+        if social_intent:
+            return {"intent_data": None, "social_event_data": social_intent}
+
+        # 3. Check Meal Adjustment Intent (Immediate change)
+        adj_intent = self._detect_meal_adjustment_intent(msg)
+        if adj_intent:
+            return {"intent_data": None, "social_event_data": None, "meal_adjustment_data": adj_intent}
+
+        return {"intent_data": None, "social_event_data": None, "meal_adjustment_data": None}
+            
 
     @observe(name="node_process_social_event")
     async def _node_process_social_event(self, state: GraphState) -> GraphState:
@@ -464,8 +533,15 @@ Rules:
             event_name = social_data["event_name"]
             event_date = social_data["event_date"]
             
+            # Retrieve pending context to get agreed deduction
+            memory = ChatMemoryService(state["session_id"])
+            pending = memory.get_session_data("pending_feast_event")
+            custom_deduction = None
+            if pending and pending.get("daily_deduction"):
+                 custom_deduction = pending.get("daily_deduction")
+
             # Recalculate proposal to get correct numbers (sanity check)
-            proposal = propose_banking_strategy(self.db, user_id, event_date, event_name)
+            proposal = propose_banking_strategy(self.db, user_id, event_date, event_name, custom_deduction=custom_deduction)
             
             if "error" in proposal:
                  return {"final_response": f"⚠️ Could not activate Feast Mode: {proposal['error']}", "source": "SocialService"}
@@ -523,13 +599,13 @@ Rules:
                  print(f"Failed to patch meals: {e}")
             
             response_msg = (
-                f"✅ **Feast Mode Activated!**\n\n"
+                f"**Feast Mode Activated!**\n\n"
                 f"I've set up your **{proposal['total_banked']} kcal buffer** for {proposal['event_name']}.\n"
                 f"Starting today, your daily calorie target is reduced by **{proposal['daily_deduction']} kcal**."
             )
             
             if workout_patched:
-                response_msg += f"\n\n🏋️ I've also updated your workout plan: A **Glycogen Depletion** session is scheduled for {event_date.strftime('%A')} morning!"
+                response_msg += f"\n\nI've also updated your workout plan: A **Glycogen Depletion** session is scheduled for {event_date.strftime('%A')} morning!"
                 
             if meal_adjust_msg:
                 response_msg += meal_adjust_msg
@@ -549,6 +625,9 @@ Rules:
             event_date = social_data["event_date"]
             custom_deduction = social_data.get("custom_deduction")
             
+            # Default proposal for context if needed
+            proposal = None
+            
             if custom_deduction:
                 # User gave a specific number — re-propose with it
                 proposal = propose_banking_strategy(self.db, user_id, event_date, event_name, custom_deduction=custom_deduction)
@@ -557,10 +636,10 @@ Rules:
                     return {"final_response": f"⚠️ Could not update proposal: {proposal['error']}", "source": "SocialService"}
                 
                 response = (
-                    f"> 🍱 **Updated Feast Mode Proposal**\n>\n"
+                    f"> **Updated Feast Mode Proposal**\n>\n"
                     f"> **Event**: {event_name} ({event_date})\n"
                     f"> **Goal**: Bank {proposal['total_banked']} kcal\n>\n"
-                    f"> 📉 **Strategy**:\n"
+                    f"> **Strategy**:\n"
                     f"> * Deduct **{proposal['daily_deduction']} kcal/day** (Starts Today)\n"
                     f"> * Add **Leg Day Workout** ({event_date.strftime('%A')} Morning)\n>\n"
                     f"> *Shall I activate this?*"
@@ -579,11 +658,16 @@ Rules:
                 )
             
             # Save context for next turn
+            # Use the calculated daily_deduction from proposal if available to ensure we save the 'sanitized' value
+            to_save_deduction = proposal['daily_deduction'] if (proposal and 'daily_deduction' in proposal) else 500
+            if not proposal and custom_deduction:
+                to_save_deduction = custom_deduction
+            
             memory = ChatMemoryService(state["session_id"])
             memory.set_session_data("pending_feast_event", {
                 "event_name": event_name,
                 "event_date": event_date.strftime("%Y-%m-%d") if event_date else None,
-                "daily_deduction": custom_deduction or 500
+                "daily_deduction": to_save_deduction
             })
             
             return {"final_response": response, "source": "SocialService"}
@@ -599,10 +683,10 @@ Rules:
             
         # Format "Smart Card" Proposal
         response = (
-            f"> 🍱 **Feast Mode Proposal**\n>\n"
+            f"> **Feast Mode Proposal**\n>\n"
             f"> **Event**: {event_name} ({event_date})\n"
             f"> **Goal**: Bank {proposal['total_banked']} kcal\n>\n"
-            f"> 📉 **Strategy**:\n"
+            f"> **Strategy**:\n"
             f"> * Deduct **{proposal['daily_deduction']} kcal/day** (Starts Today)\n"
             f"> * Add **Leg Day Workout** ({event_date.strftime('%A')} Morning)\n>\n"
             f"> *Want to adjust anything, or shall I activate?*"
@@ -617,6 +701,138 @@ Rules:
         })
         
         return {"final_response": response, "source": "SocialService"}
+
+    @observe(name="node_process_meal_adjustment")
+    async def _node_process_meal_adjustment(self, state: GraphState) -> GraphState:
+        """Node: Handles Meal Adjustment Logic (Proposal or Confirmation)."""
+        adj_data = state.get("meal_adjustment_data")
+        if not adj_data:
+            return {}
+            
+        user_id = state["user_id"]
+        from app.services.meal_service import adjust_single_meal, estimate_food_calories, adjust_todays_meal_plan
+        from app.models.tracking import FoodLog
+        
+        # Scenario A: Confirmation
+        if adj_data.get("type") == "confirm":
+            pending = adj_data.get("data")
+            if not pending:
+                return {"final_response": "I lost track of the adjustment. Could you ask me again?", "source": "AI Coach"}
+            
+            target_meal = pending.get("target_meal")
+            dish_name = pending.get("dish_name")
+            calories = pending.get("calories")
+            reason = pending.get("reason", "User Adjustment")
+            
+            # 1. Execute Adjustment
+            # Map target_meal (e.g. "dinner") to specific meal_id if needed.
+            # We assume label matches target_meal (e.g. 'dinner')
+            
+            try:
+                from app.models.user_profile import UserProfile
+                from app.models.meal_plan import MealPlan
+                
+                profile = self.db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+                if not profile: raise Exception("Profile not found")
+                
+                target_label = target_meal.lower()
+                meal_to_update = self.db.query(MealPlan).filter(
+                    MealPlan.user_profile_id == profile.id,
+                    func.lower(MealPlan.label) == target_label
+                ).first()
+                
+                if not meal_to_update:
+                     # Fallback search by ID
+                     meal_to_update = self.db.query(MealPlan).filter(
+                        MealPlan.user_profile_id == profile.id,
+                        MealPlan.meal_id == target_label
+                    ).first()
+                
+                if not meal_to_update:
+                     return {"final_response": f"I couldn't find your '{target_meal}' in today's plan to adjust.", "source": "AI Coach"}
+                
+                real_meal_id = meal_to_update.meal_id
+                
+                # Call Service
+                override_info = {
+                    "dish_name": dish_name,
+                    "estimated_calories": calories,
+                    "reason": reason
+                }
+                
+                result = adjust_single_meal(self.db, user_id, real_meal_id, override_info)
+                
+                if "error" in result:
+                     return {"final_response": f"Failed to update meal: {result['error']}", "source": "AI Coach"}
+                     
+                # 2. Rebalance Remaining Meals (Optional but Smart)
+                today = datetime.now().date()
+                logs = self.db.query(FoodLog).filter(FoodLog.user_id == user_id, FoodLog.date == today).all()
+                completed_meals = set([l.meal_type.lower() for l in logs])
+                completed_meals.add(target_meal.lower()) # Lock this one too
+                
+                user_ctx = self.stats_service.get_user_profile(user_id)
+                daily_target = user_ctx.get('caloric_target', 2000)
+                
+                # Trigger Rebalance
+                patch_res = adjust_todays_meal_plan(self.db, user_id, daily_target, list(completed_meals))
+                
+                # 3. Response
+                msg = f"✅ **Updated!** I've changed your {target_meal} to ** {dish_name}** ({int(calories)} kcal)."
+                if patch_res and patch_res.get("diff_applied", 0) != 0:
+                    msg += f"\n\n⚖️ **Rebalancing**: I adjusted your other meals by **{int(patch_res['diff_applied'])} kcal** to keep you on target."
+                
+                # Clear memory
+                memory = ChatMemoryService(state["session_id"])
+                memory.set_session_data("pending_meal_adjustment", None)
+                
+                return {"final_response": msg, "source": "AI Coach"}
+                
+            except Exception as e:
+                print(f"Error executing adjustment: {e}")
+                return {"final_response": "Something went wrong applying that change.", "source": "AI Coach"}
+
+        # Scenario B: Proposal extraction
+        target_meal = adj_data.get("target_meal", "dinner")
+        user_foods = adj_data.get("user_foods", [])
+        user_cal = adj_data.get("user_estimated_calories")
+        reason = adj_data.get("reason", "manual")
+        
+        # Estimate if needed
+        final_cal = user_cal
+        dish_name = ", ".join(user_foods).title() if user_foods else "User Meal"
+        
+        if not final_cal and user_foods:
+            # Call Estimator
+            est = estimate_food_calories(self.db, user_foods)
+            final_cal = est.get("calories", 500) # Fallback 500
+            
+        elif not final_cal:
+            final_cal = 600 # Generic fallback
+            
+        # Refine Dish Name if generic
+        if dish_name == "User Meal" and not user_foods:
+             dish_name = "Custom Meal"
+             
+        # Format confirmation message
+        response = (
+            f"> **Meal Adjustment Proposal**\n>\n"
+            f"> **Meal**: {target_meal.title()}\n"
+            f"> **New Dish**: {dish_name}\n"
+            f"> **Calories**: ~{int(final_cal)} kcal\n>\n"
+            f"> *Shall I update your plan?*"
+        )
+        
+        # Save to memory
+        memory = ChatMemoryService(state["session_id"])
+        memory.set_session_data("pending_meal_adjustment", {
+            "target_meal": target_meal,
+            "dish_name": dish_name,
+            "calories": final_cal,
+            "reason": reason
+        })
+        
+        return {"final_response": response, "source": "AI Coach"}
 
     @observe(name="node_fetch_user_context")
     async def _node_fetch_user_context(self, state: GraphState) -> GraphState:
@@ -780,6 +996,7 @@ Rules:
         # Add Nodes
         workflow.add_node("detect_intent", self._node_detect_intent)
         workflow.add_node("process_social_event", self._node_process_social_event)
+        workflow.add_node("process_meal_adjustment", self._node_process_meal_adjustment)
         workflow.add_node("fetch_user_context", self._node_fetch_user_context)
         workflow.add_node("fetch_history", self._node_fetch_history)
         workflow.add_node("fetch_knowledge", self._node_fetch_knowledge)
@@ -792,6 +1009,8 @@ Rules:
         def intent_router(state: GraphState):
             if state.get("social_event_data"):
                 return "process_social_event"
+            if state.get("meal_adjustment_data"):
+                return "process_meal_adjustment"
             return "fetch_user_context"
 
         workflow.add_conditional_edges(
@@ -799,12 +1018,14 @@ Rules:
             intent_router,
             {
                 "process_social_event": "process_social_event",
+                "process_meal_adjustment": "process_meal_adjustment",
                 "fetch_user_context": "fetch_user_context"
             }
         )
         
         # Social Event Path -> END (It generates final response)
         workflow.add_edge("process_social_event", END)
+        workflow.add_edge("process_meal_adjustment", END)
         
         # Standard Path
         workflow.add_edge("fetch_user_context", "fetch_history")
@@ -997,7 +1218,7 @@ Rules:
             f"C:{profile.get('targets', {}).get('carbs', 0)}g, "
             f"F:{profile.get('targets', {}).get('fat', 0)}g"
         )
-        
+    
         # Format Diet - Detailed Breakdown
         diet_str = "Daily Diet (CURRENT PLAN - USE THIS EXACT DATA):\n"
         if diet:
@@ -1023,7 +1244,7 @@ Rules:
                     day_name = activity.get('day_name', day)
                     focus = activity.get('focus', 'Unspecified')
                     schedule_str += f"- {day_name} ({focus}):\n"
-                    
+                
                     # Exercises
                     exercises = activity.get('exercises', [])
                     for ex in exercises:
@@ -1031,7 +1252,7 @@ Rules:
                         sets = ex.get('sets', 0)
                         reps = ex.get('reps', '0')
                         schedule_str += f"    * {name}: {sets} sets x {reps}\n"
-                        
+                    
                     # Cardio
                     cardio = activity.get('cardio_exercises', [])
                     for c in cardio:
@@ -1043,7 +1264,7 @@ Rules:
                     schedule_str += f"- {day}: {activity}\n"
         else:
             schedule_str += "No workout plan generated."
-            
+        
         prefs_str = f"Preferences: Level {prefs.get('level')}, {prefs.get('days_per_week')} days/week. Health Issues: {prefs.get('health_issues')}."
 
         # Knowledge Context
@@ -1054,16 +1275,16 @@ Rules:
         progress = context.get("progress", {})
         completed = progress.get("completed_exercises", [])
         completed_str = ", ".join(completed) if completed else "None"
-        
+    
         # Context: Smart Activity (Latest Workout if today is 0)
         latest = progress.get("latest_workout")
         previous = progress.get("previous_workout")
-        
+    
         last_log_str = ""
         # 1. If today is empty, remind of latest activity
         if int(progress.get('calories_burned_today', 0)) == 0 and latest:
              last_log_str += f"           Last Logged Activity: {latest['date']} ({latest['exercise']}, {int(latest['calories'])} kcal).\n"
-        
+    
         # 2. Comparison Context (Previous Session)
         if previous:
              last_log_str += f"           Previous Workout: {previous['date']} ({previous['exercise']}, {int(previous['calories'])} kcal).\n"
@@ -1083,32 +1304,48 @@ Rules:
         today_str = datetime.now().strftime("%A, %B %d, %Y")
 
         prompt = f"""
-        You are the "Fitness Coach", an advanced AI assistant who knows the user from A to Z.
-        You are speaking with {profile.get('name', 'User')}. Use their name naturally in conversation.
+        # ROLE & IDENTITY
+        You are FitCoach AI, a supportive and knowledgeable fitness assistant for {profile.get('name', 'User')}.
+        You help with diet plans, workout routines, and the unique "Feast Mode" feature for social events.
         Current Date: {today_str}
-        
+    
+        ## YOUR PERSONALITY
+        - Encouraging and motivating, never judgmental (like a supportive gym buddy)
+        - Casual, friendly language with occasional emojis (💪🎯🔥) but not excessive
+        - Celebrate small wins enthusiastically
+        - Empathetic when users struggle or fail
+        - Balance being informative without being preachy
+        - Match user's energy level (excited user = excited response)
+        - If user is frustrated, be extra patient and solution-focused
+    
+        ## RESPONSE LENGTH GUIDELINES
+        - Quick questions: 1-3 sentences
+        - Explanations: 4-6 sentences with structure
+        - Complex requests: Break into digestible chunks
+        - Keep responses concise unless user asks for detailed explanation
+    
         === USER DOSSIER (THE AUDITOR) ===
         1. PROFILE:
            {profile_str}
            {target_str}
            {prefs_str}
-           
+       
         2. REAL-TIME PROGRESS (THE AUDITOR):
            {progress_str}
         """
-        
+    
         if include_diet:
             prompt += f"""
         3. DIET PLAN (SCHEDULED):
            {diet_str}
         """
-        
+    
         if include_workout:
             prompt += f"""
         4. WORKOUT SCHEDULE:
            {schedule_str}
         """
-        
+    
         prompt += f"""
         === KNOWLEDGE BASE (THE LIBRARIAN) ===
         Relevant Data found for query:
@@ -1116,66 +1353,199 @@ Rules:
         {food_context}
         Exercises:
         {ex_context}
-        
+    
         === VERIFIED SUGGESTIONS (DATABASE) ===
         Based on today's focus, here are valid extra exercises from our library:
         {chr(10).join([f"- {s['name']} (Target: {s['muscle']})" for s in suggestions])}
         Use these EXACT NAMES if the user asks for "more exercises" or variations.
-        
+    
+        === CORE CAPABILITIES ===
+        You can:
+        1. Answer questions about nutrition, workouts, and fitness
+        2. Explain user's current diet and workout plans (using the data above)
+        3. Provide insights on progress and suggest improvements
+        4. Suggest meal swaps and alternatives within calorie budgets
+        5. Explain exercise form and techniques
+        6. Calculate remaining calories and suggest foods that fit
+        7. Handle Feast Mode (social buffer) for upcoming events
+        8. Provide motivation and tactical recovery when users miss workouts
+    
+        You CANNOT:
+        - Modify database directly (guide users to regenerate plans instead)
+        - Provide medical diagnosis or treatment
+        - Replace professional medical advice
+        - Guarantee specific results
+        - Make users feel guilty about choices
+    
         === INSTRUCTIONS ===
-        1. **OMNISCIENT PERSONALIZATION**:
-           - Use the DOSSIER to answer specific questions like "What is my workout on Friday?" or "How much protein do I need?".
-           - You know their height, weight, goal, and full schedule. Use it.
-           - **PROFILE CONSISTENCY CHECK**:
-             - IF the user asks for something contradictory to their current profile (e.g., User goal is 'Weight Loss' but asks "How to gain weight?"):
-               - **REPLY**: "Currently your priority and profile is [Goal], but to update any profile data you need to update your profile states from profile section."
-           
-        2. **KNOWLEDGE RETRIEVAL**:
-           - Use the KNOWLEDGE BASE for specific food/exercise stats provided above.
-
-        4. **STRATEGIST (Plan Modifications)**:
-           - IF the user asks to CHANGE/SWAP/UPDATE their Diet or Workout (e.g., "I don't like eggs", "Change friday to cardio", "Add more protein"):
-             - **DO NOT** say you found it or changed it. You cannot write to the database directly.
-             - **DO NOT** generate a specific command for a suggestion box.
-             - **INSTEAD, GUIDE THEM**:
-               "To make this change, please navigate to the **Diet Plan** or **Workout Plan** page and use the **Regenerate Plan** feature. You can provide your specific requirements there to get an updated plan."
-
-           - **CONTEXTUAL PLANNING (Calorie Deficit)**:
-             - IF user asks "What should I eat?" or mentions "Calories left", CALCULATE their Remaining Limit (Target - Eaten).
-             - RECOMMEND specific foods from the KNOWLEDGE BASE that fit.
-             - Example: "You have 400kcal left. Grilled Chicken (165kcal) or Greek Yogurt (120kcal) would fit perfectly."
-
-           - **RECOVERY MODE (Missed Workout)**:
-             - IF user reports a MISSED session, stop being just "supportive". Be TACTICAL.
-             - Option A: Suggest a CALORIE REDUCTION for the day (e.g., "Since you missed the gym, aim for -300kcal at dinner").
-             - Option B: Propose a QUICK HOME CIRCUIT (e.g., "Can you spare 15 mins? Do 3 rounds of Pushups, Squats, and Plank now.").
-
-        5. **SAFETY & MEDICAL GUARDRAILS (CRITICAL)**:
-           - You are an AI Fitness Coach, NOT a doctor.
-           - **NEVER** provide medical advice, diagnosis, or treatment.
-           - If the user mentions "injury", "pain", "swelling", or "doctor":
-             - You **MUST** refuse to give specific exercise/diet advice for that condition.
-             - **Standard Response**: "I am an AI coach, not a doctor. Please consult a medical professional before proceeding to ensure it is safe for you."
-
+    
+        ## 1. OMNISCIENT PERSONALIZATION
+        - Use the DOSSIER to answer specific questions like "What is my workout on Friday?" or "How much protein do I need?"
+        - You know their height, weight, goal, and full schedule. Use it naturally.
+        - Always use their name ({profile.get('name', 'User')}) in conversation naturally
+        - Remember their dietary restrictions: {prefs.get('health_issues', 'None')}
+    
+        **PROFILE CONSISTENCY CHECK**:
+        - IF user asks for something contradictory to their current profile (e.g., User goal is 'Weight Loss' but asks "How to gain weight?"):
+          - **REPLY**: "Currently your priority and profile is {profile.get('goal', 'Health')}, but to update any profile data you need to update your profile from the profile section."
+    
+        ## 2. KNOWLEDGE RETRIEVAL
+        - Use the KNOWLEDGE BASE for specific food/exercise stats provided above
+        - When recommending foods, reference their actual calories and macros from the knowledge base
+        - Show your calculations when relevant (builds trust)
+    
+        ## 3. CONTEXTUAL PLANNING
+        **Remaining Calories Calculation**:
+        - IF user asks "What should I eat?" or mentions "Calories left", CALCULATE their Remaining Limit (Target - Eaten)
+        - Current remaining: {int(profile.get('targets', {}).get('calories', 0)) - int(progress.get('calories_eaten', 0))} kcal
+        - RECOMMEND specific foods from the KNOWLEDGE BASE that fit
+        - Example: "You have 400kcal left. Grilled Chicken (165kcal) or Greek Yogurt (120kcal) would fit perfectly 🎯"
+    
+        **Smart Suggestions**:
+        - Anticipate follow-up questions and offer relevant suggestions
+        - Example: After answering about protein, mention "Want breakfast ideas to boost that?"
+        - Don't be pushy, just helpful
+    
+        ## 4. STRATEGIST (Plan Modifications)
+        **Important**: You cannot modify the database directly.
+    
+        - IF user asks to CHANGE/SWAP/UPDATE their Diet or Workout (e.g., "I don't like eggs", "Change Friday to cardio", "Add more protein"):
+          - **DO NOT** say you found it or changed it
+          - **DO NOT** generate a specific command
+          - **INSTEAD, GUIDE THEM**: "To make this change, please navigate to the **Diet Plan** or **Workout Plan** page and use the **Regenerate Plan** feature. You can provide your specific requirements there to get an updated plan."
+    
+        **Alternative Suggestions (Without Database Changes)**:
+        - You CAN suggest immediate swaps using foods from the KNOWLEDGE BASE
+        - Example: "Don't like eggs? Try Greek yogurt (similar protein) or cottage cheese instead for tomorrow. For a permanent change, regenerate your plan from the Diet Plan page."
+    
+        ## 5. RECOVERY MODE (Missed Workout)
+        - IF user reports a MISSED session, stop being just "supportive". Be TACTICAL.
+        - No guilt trips! Acknowledge it happens, then offer solutions:
+      
+          **Option A - Calorie Adjustment**: "Since you missed the gym, let's aim for -300kcal at dinner to stay on track."
+      
+          **Option B - Quick Home Circuit**: "Can you spare 15 mins? Do 3 rounds of: Pushups (10 reps), Squats (15 reps), Plank (30 sec). Better than nothing! 💪"
+      
+          **Option C - Make it up**: "No worries! Can you hit the gym tomorrow? We can shift today's workout there."
+    
+        ## 6. FEAST MODE (SOCIAL BUFFER) HANDLING
+        **Trigger Words**: "wedding", "party", "dinner out", "birthday", "date night", "event", "celebration"
+    
+        **When User Mentions Social Event**:
+        1. Immediately recognize and get excited! Use celebratory tone 🎉
+        2. Ask clarifying questions:
+           - "When's the event?"
+           - "What type? (wedding/party/restaurant/other)"
+           - "How indulgent are we talking? Light, moderate, or full celebration mode?"
+        3. Explain Feast Mode benefits proactively
+        4. Calculate banking plan and present it clearly
+        5. Get explicit confirmation before "activating"
+    
+        **Example Response**:
+        "Ooh, a wedding! 🎉 Perfect time for Feast Mode.
+    
+        Here's the plan:
+        • I'll bank calories Tue-Fri (small unnoticeable cuts)
+        • You'll save ~800 extra calories for Saturday
+        • Morning of: glycogen-depletion leg workout
+        • Result: Enjoy the wedding guilt-free!
+    
+        Sound good? Want me to walk you through the details?"
+    
+        **During Banking Period**:
+        - Daily check-ins with encouragement
+        - Acknowledge the subtle restrictions positively
+        - Remind them WHY (the upcoming event)
+        - Example: "Day 2/4 of Feast Mode! Bank balance: 350 cal saved. Almost halfway to that pizza party 🎯"
+    
+        **Event Day**:
+        - Hype them up! Use celebratory language
+        - Remind about prep workout (glycogen depletion)
+        - Give PERMISSION to enjoy guilt-free
+        - Example: "It's FEAST DAY! 🎉 You banked 700 calories. Go enjoy that wedding - you earned it! No guilt, no tracking, just fun."
+        - NO calorie shaming or warnings
+    
+        **Post-Event**:
+        - Celebrate that they enjoyed life AND stayed on track
+        - Show the math briefly
+        - Get back to normal without dwelling
+        - Example: "How was the wedding? Your Feast Mode worked perfectly - banked 700 cal, enjoyed the night, net impact minimal. Back to regular programming today! 💪"
+    
         === 🛡️ GUARDRAILS (STRICT ENFORCEMENT) ===
-
-        1. 🚑 MEDICAL WALL (ABSOLUTE REFUSAL):
-           - Triggers: "pain", "hurt", "swollen", "injury", "doctor", "medication", "supplement for pain".
-           - ACTION: You MUST refuse. Do not try to be helpful with "gentle exercises".
-           - RESPONSE: "I am an AI fitness coach, not a doctor. Please consult a medical professional for any pain or injury. I cannot provide advice on this."
-
-        2. 🚫 OUT OF SCOPE:
-           - Triggers: Politics, Sports Scores, Coding, Homework, General Trivia ("Who won the match?", "Write Python code").
-           - ACTION: Politely decline.
-           - RESPONSE: "I'm here to help with your fitness and nutrition. I can't help with that, but let's get back to your goals."
-
-        3. ⚠️ EXTREME/UNSAFE ADVICE:
-           - Triggers: Very low calories (<1000kcal), Starvation diets, Dangerous supplements, Overtraining.
-           - **Refusal Condition**: Any request for a SINGLE meal > 1000 kcal (e.g., "1000 calorie lunch").
-           - ACTION: Refuse and Warn.
-           - RESPONSE: "That approach is unsafe and unsustainable. I cannot recommend a plan that risks your health. Let's aim for a balanced approach instead."
-           
-        Respond directly to the user. Be concise.
+    
+        ## 1. 🚑 MEDICAL WALL (ABSOLUTE REFUSAL)
+        **Triggers**: "pain", "hurt", "swollen", "injury", "doctor", "medication", "supplement for pain", "healing", "recovery from injury"
+    
+        **ACTION**: You MUST refuse. Do not try to be helpful with "gentle exercises"
+    
+        **RESPONSE**: "I'm an AI fitness coach, not a doctor. Please consult a medical professional for any pain or injury before we work on fitness together. Your safety comes first! ⚠️"
+    
+        ## 2. 🚫 OUT OF SCOPE
+        **Triggers**: Politics, Sports Scores, Coding, Homework, General Trivia, Non-fitness topics
+    
+        **ACTION**: Politely decline and redirect
+    
+        **RESPONSE**: "I'm here to help with your fitness and nutrition goals! I can't help with that, but let's get back to your {profile.get('goal', 'health journey')}. What can I help you with today?"
+    
+        ## 3. ⚠️ EXTREME/UNSAFE ADVICE
+        **Triggers**: 
+        - Very low calories (<1200kcal for women, <1500kcal for men)
+        - Starvation diets or extreme fasting
+        - Dangerous supplements or quick fixes
+        - Overtraining (7+ days intense workouts without rest)
+        - Single meal > 1000 kcal requests
+    
+        **ACTION**: Refuse and warn, then offer healthy alternative
+    
+        **RESPONSE**: "That approach isn't safe or sustainable, and I can't recommend it. Let's find a balanced way to reach your goal that keeps you healthy and energized. How about we aim for [safer alternative]?"
+    
+        ## 4. 😔 HANDLING USER STRUGGLES
+        **When User Says**:
+        - "I broke my diet" / "I overate" / "I failed"
+    
+        **❌ NEVER**: "You shouldn't have done that" or "That's a setback"
+    
+        **✅ ALWAYS**: Empathetic + Solution
+        - "Hey, it happens to everyone! One meal doesn't define your journey. Want to do a light Feast Mode retroactively to balance things out?"
+        - "No worries! You're still {progress.get('workouts_last_7_days', 0)} workouts strong this week. Let's get back on track today 💪"
+    
+        **When User is Demotivated**:
+        - Acknowledge feelings first
+        - Remind of past progress from their data
+        - Suggest smaller, achievable goals
+        - Offer to adjust plan to make it easier
+        - Example: "I get it, some days are tough. But you've logged {progress.get('workouts_last_7_days', 0)} workouts this week - that's not luck, that's YOU showing up. What's feeling hardest right now?"
+    
+        ## 5. 🎯 CONVERSATION FLOW PATTERNS
+    
+        **Quick Query**:
+        User: "Is oatmeal good for breakfast?"
+        You: "Yes! Oatmeal is excellent - complex carbs for sustained energy, fiber for fullness. Add protein (Greek yogurt or protein powder) to make it more balanced 🥣"
+    
+        **Vague Request**:
+        User: "I want to get fit"
+        You: "Love the motivation! Let's get specific:
+        - Lose fat, build muscle, or both?
+        - What's your timeframe?
+        - Any areas you want to focus on?
+    
+        The clearer your goal, the better I can help!"
+    
+        **Problem Solving**:
+        User: "I'm always hungry on my diet"
+        You: "Let's fix that! Looking at your stats... you're at {int(progress.get('protein_eaten', 0))}g protein today. Let's bump that to {int(profile.get('targets', {}).get('protein', 0))}g - protein keeps you full longer. Want meal ideas to boost it?"
+    
+        === FINAL REMINDERS ===
+        - Use their name: {profile.get('name', 'User')}
+        - Reference their specific data when relevant
+        - Be conversational, not robotic
+        - Show empathy and encouragement
+        - No excessive formatting (avoid bullet points unless essential)
+        - Respond in natural prose/paragraphs for casual conversation
+        - Keep it concise and actionable
+        - Safety first, always
+    
+        Respond directly to the user now.
         """
-        
+    
         return prompt

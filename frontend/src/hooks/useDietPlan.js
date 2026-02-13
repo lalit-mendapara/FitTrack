@@ -1,7 +1,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'react-toastify';
-import { getCurrentMealPlan, generateMealPlan, regenerateMealPlan } from '../services/mealPlanService';
+import { getCurrentMealPlan, generateMealPlan, regenerateMealPlan, resetMealPlan } from '../services/mealPlanService';
 import { getProfile } from '../services/profileService';
 
 export const useDietPlan = (onGenerateStart, onGenerateEnd) => {
@@ -105,6 +105,26 @@ export const useDietPlan = (onGenerateStart, onGenerateEnd) => {
             if (onGenerateEnd) onGenerateEnd();
         }
     };
+    
+    // NEW: Handle Reset to Original
+    const handleResetPlan = async () => {
+        setGenerating(true);
+        if (onGenerateStart) onGenerateStart();
+
+        try {
+            await resetMealPlan();
+            toast.success("Meal plan reset to original successfully!");
+            setShowProfileUpdateWarning(false);
+            await fetchPlan();
+        } catch (err) {
+            console.error("Reset failed", err);
+            const msg = err.response?.data?.detail || "Failed to reset plan.";
+            toast.error(msg);
+        } finally {
+            setGenerating(false);
+            if (onGenerateEnd) onGenerateEnd();
+        }
+    };
 
     const isPlanExpired = useCallback(() => {
         if (!plan || !plan.created_at) return false;
@@ -125,6 +145,7 @@ export const useDietPlan = (onGenerateStart, onGenerateEnd) => {
         isPlanExpired: isPlanExpired(), 
         handleGenerate,
         handleRegenerate,
+        handleResetPlan,
         refreshPlan: fetchPlan
     };
 };

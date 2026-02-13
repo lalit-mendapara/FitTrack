@@ -12,6 +12,7 @@ import { updateTimezone } from '../../api/user_profile';
 import { getActiveSocialEvent } from '../../api/socialEventService';
 import LockOverlay from '../common/LockOverlay';
 import FeastModeBanner from './FeastModeBanner';
+import { useDietPlan } from '../../hooks/useDietPlan';
 
 const DashboardOverview = ({ hasDietPlan, hasWorkoutPlan }) => {
     const [dietData, setDietData] = useState({ caloriesTarget: 0, totalCalories: 0 });
@@ -19,6 +20,7 @@ const DashboardOverview = ({ hasDietPlan, hasWorkoutPlan }) => {
     const [notifications, setNotifications] = useState([]);
     const [showNotifications, setShowNotifications] = useState(true);
     const [socialEvent, setSocialEvent] = useState(null);
+    const { plan } = useDietPlan();
     
     // Lifted State for Week Offset (Synchronizes Calendar, Overview, and Goals)
     const [weekOffset, setWeekOffset] = useState(0); 
@@ -63,8 +65,10 @@ const DashboardOverview = ({ hasDietPlan, hasWorkoutPlan }) => {
         setWorkoutData(data);
     }, []);
 
-    const progressPercent = dietData.caloriesTarget > 0 
-        ? Math.min((dietData.totalCalories / dietData.caloriesTarget) * 100, 100)
+    const baseCaloriesTarget = plan?.daily_generated_totals?.calories || dietData.caloriesTarget;
+
+    const progressPercent = baseCaloriesTarget > 0 
+        ? Math.min((dietData.totalCalories / baseCaloriesTarget) * 100, 100)
         : 0;
 
     return (
@@ -114,7 +118,7 @@ const DashboardOverview = ({ hasDietPlan, hasWorkoutPlan }) => {
                     </div>
                     
                     {/* Calories Target - Right side */}
-                    {dietData.caloriesTarget > 0 && (
+                    {baseCaloriesTarget > 0 && (
                         <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
                             {/* Workout To Burn */}
                             <div className="flex flex-1 items-center justify-between sm:justify-start gap-4 bg-gradient-to-r from-orange-50 to-red-50 px-5 py-3 rounded-xl border border-orange-100">
@@ -141,9 +145,9 @@ const DashboardOverview = ({ hasDietPlan, hasWorkoutPlan }) => {
                                 <div className="text-right">
                                     <div className="flex items-baseline gap-1">
                                         <span className="text-2xl font-black text-emerald-600">
-                                            {Math.max(0, Math.round(dietData.caloriesTarget - dietData.totalCalories))}
+                                            {Math.max(0, Math.round(baseCaloriesTarget - dietData.totalCalories))}
                                         </span>
-                                        <span className="text-xs text-gray-400 font-medium">/ {Math.round(dietData.caloriesTarget)}</span>
+                                        <span className="text-xs text-gray-400 font-medium">/ {Math.round(baseCaloriesTarget)}</span>
                                     </div>
                                     <div className="w-24 h-1.5 bg-gray-200 rounded-full mt-1 ml-auto">
                                         <div 

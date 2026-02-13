@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.services.meal_service import generate_meal_plan 
+from app.services.meal_service import generate_meal_plan, restore_original_plan 
 from app.crud.meal_plan import get_current_meal_plan
 from app.schemas.meal_plan import MealPlanResponse, MealPlanGenerateRequest, MealItem, NutrientDetail
 from app.models.meal_plan import MealPlan
@@ -111,3 +111,18 @@ def skip_meal_endpoint(
     
     return result
 
+    return result
+
+
+@router.post("/reset", response_model=dict)
+def reset_meal_plan_endpoint(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Reset meal plan to original generated state (undo adjustments).
+    """
+    result = restore_original_plan(db, current_user.id)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result

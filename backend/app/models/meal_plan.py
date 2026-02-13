@@ -56,6 +56,10 @@ class MealPlan(Base):
         # ["Reduced 50 kcal - carbs trimmed for banking"]
     )
 
+    # AI Coach meal adjustment tracking
+    is_user_adjusted = Column(Boolean, default=False)
+    adjustment_note = Column(String, nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

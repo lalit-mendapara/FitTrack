@@ -53,6 +53,8 @@ def get_current_meal_plan(db: Session, user_id: int):
                 alternatives=alternatives,
                 guidelines=guidelines,
                 feast_notes=m.feast_notes or [],
+                is_user_adjusted=m.is_user_adjusted or False,
+                adjustment_note=m.adjustment_note,
             ))
             
         # 4. Calculate Totals (on the fly to be accurate to what's stored)
@@ -102,4 +104,53 @@ def get_meal_plan(db: Session, user_id: int):
         
     except Exception as e:
         print(f"Error fetching raw meal plan: {e}")
+        return None
+
+def update_single_meal(db: Session, user_profile_id: int, meal_id: str, updated_fields: dict) -> MealPlan:
+    """
+    Update a single meal in the plan for a specific profile.
+    
+    Args:
+        db: Database session
+        user_profile_id: The ID of the user profile (not user_id)
+        meal_id: The meal identifier (e.g., 'breakfast')
+        updated_fields: Dictionary of fields to update
+        
+    Returns:
+        The updated MealPlan object or None if not found.
+    """
+    try:
+        # Find the specific meal
+        meal = db.query(MealPlan).filter(
+            MealPlan.user_profile_id == user_profile_id,
+            MealPlan.meal_id == meal_id
+        ).first()
+        
+        if not meal:
+            return None
+            
+        # Update fields
+        for key, value in updated_fields.items():
+            if hasattr(meal, key):
+                setattr(meal, key, value)
+        
+        # Explicitly flag JSON fields as modified if they are updated
+        # This ensures SQLAlchemy detects changes inside JSON objects
+        from sqlalchemy.orm.attributes import flag_modified
+        if 'nutrients' in updated_fields:
+            flag_modified(meal, 'nutrients')
+        if 'alternatives' in updated_fields:
+            flag_modified(meal, 'alternatives')
+        if 'guidelines' in updated_fields:
+            flag_modified(meal, 'guidelines')
+        if 'feast_notes' in updated_fields:
+            flag_modified(meal, 'feast_notes')
+            
+        db.commit()
+        db.refresh(meal)
+        return meal
+        
+    except Exception as e:
+        print(f"Error updating meal {meal_id}: {e}")
+        db.rollback()
         return None

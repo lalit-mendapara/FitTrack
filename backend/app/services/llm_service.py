@@ -29,17 +29,19 @@ if sys.version_info < (3, 14):
 from config import LLM_PROVIDER, LLM_API_KEY, LLM_MODEL as OVERRIDE_MODEL
 
 # Default to local Ollama instance
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
+OLLAMA_URL = os.getenv("OLLAMA_URL")
+if not OLLAMA_URL:
+    OLLAMA_URL = "http://localhost:11434"
 
 # Determine Model Name based on Provider
 # If LLM_MODEL is set in env, it overrides everything.
 DEFAULT_MODELS = {
-    "ollama": "gpt-oss:120b-cloud",
-    "openrouter": "google/gemini-2.0-flash-001", # Cost effective default
+    "ollama": "gpt-oss:120b-cloud",  # User's custom model
+    "openrouter": "google/gemini-2.0-flash-001",
     "openai": "gpt-4o",
 }
 
-MODEL_NAME = OVERRIDE_MODEL if OVERRIDE_MODEL else DEFAULT_MODELS.get(LLM_PROVIDER, "gpt-3.5-turbo")
+MODEL_NAME = OVERRIDE_MODEL if OVERRIDE_MODEL else DEFAULT_MODELS.get(LLM_PROVIDER, "gpt-oss:120b-cloud")
 
 # Base URLs for paid providers
 PROVIDER_URLS = {
@@ -62,9 +64,19 @@ def get_llm(temperature: float = 0.7, max_tokens: int = 2000, json_mode: bool = 
     
     # 1. Ollama (Local)
     if LLM_PROVIDER == "ollama":
+        # CRITICAL FIX: Ensure we don't accidentally connect to cloud if API key is present
+        # Local Ollama does NOT need an API key. 
+        if "OLLAMA_API_KEY" in os.environ:
+             print(f"[LLM Service] Note: OLLAMA_API_KEY found but using local provider. Unsetting to prevent conflicts.")
+             del os.environ["OLLAMA_API_KEY"]
+
         format_val = "json" if json_mode else ""
+        
+        # Ensure URL is valid (strip trailing slash)
+        base_url = OLLAMA_URL.rstrip("/")
+        
         return ChatOllama(
-            base_url=OLLAMA_URL,
+            base_url=base_url,
             model=MODEL_NAME,
             temperature=temperature,
             num_predict=max_tokens,
