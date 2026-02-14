@@ -11,15 +11,16 @@ import { getUnreadNotifications, markNotificationRead } from '../../api/notifica
 import { updateTimezone } from '../../api/user_profile';
 import { getActiveSocialEvent } from '../../api/socialEventService';
 import LockOverlay from '../common/LockOverlay';
-import FeastModeBanner from './FeastModeBanner';
+import FeastActivationCard from './FeastActivationCard';
 import { useDietPlan } from '../../hooks/useDietPlan';
+import feastModeService from '../../api/feastModeService';
 
 const DashboardOverview = ({ hasDietPlan, hasWorkoutPlan }) => {
     const [dietData, setDietData] = useState({ caloriesTarget: 0, totalCalories: 0 });
     const [workoutData, setWorkoutData] = useState({ totalCalories: 0 });
     const [notifications, setNotifications] = useState([]);
     const [showNotifications, setShowNotifications] = useState(true);
-    const [socialEvent, setSocialEvent] = useState(null);
+    const [feastStatus, setFeastStatus] = useState(null);
     const { plan } = useDietPlan();
     
     // Lifted State for Week Offset (Synchronizes Calendar, Overview, and Goals)
@@ -27,9 +28,13 @@ const DashboardOverview = ({ hasDietPlan, hasWorkoutPlan }) => {
 
     // Initial Setup: Timezone & Notifications
     // 3. Fetch Active Social Event (Feast Mode)
-    const fetchSocialEvent = useCallback(async () => {
-             const event = await getActiveSocialEvent();
-             setSocialEvent(event);
+    const fetchFeastStatus = useCallback(async () => {
+        try {
+             const status = await feastModeService.getStatus();
+             setFeastStatus(status);
+        } catch (e) {
+            console.error("Failed to fetch feast status", e);
+        }
     }, []);
 
     useEffect(() => {
@@ -47,8 +52,8 @@ const DashboardOverview = ({ hasDietPlan, hasWorkoutPlan }) => {
         fetchNotifications();
         
         // 3. Initial Social Event Fetch
-        fetchSocialEvent();
-    }, [fetchSocialEvent]);
+        fetchFeastStatus();
+    }, [fetchFeastStatus]);
 
     const handleDismissNotification = async (id) => {
         await markNotificationRead(id);
@@ -73,8 +78,11 @@ const DashboardOverview = ({ hasDietPlan, hasWorkoutPlan }) => {
 
     return (
         <div className="space-y-6">
-            {/* Feast Mode Banner */}
-            {socialEvent && <FeastModeBanner event={socialEvent} onUpdate={fetchSocialEvent} />}
+            {/* Feast Mode Card */}
+            <FeastActivationCard onStatusChange={setFeastStatus} />
+
+            {/* Feast Mode Banner (Legacy/Optional - removed for now to avoid duplication) */}
+            {/* {feastStatus?.is_active && <FeastModeBanner event={feastStatus.config} onUpdate={fetchFeastStatus} />} */}
 
             {/* Notifications Banner */}
             {showNotifications && notifications.length > 0 && (

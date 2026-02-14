@@ -22,6 +22,8 @@ class MealItem(BaseModel):
     feast_notes: Optional[List[str]] = None
     is_user_adjusted: Optional[bool] = False
     adjustment_note: Optional[str] = None
+    original_nutrients: Optional[NutrientDetail] = None
+    original_portion_size: Optional[str] = None
 
 class NutrientTotals(BaseModel):
     calories: float

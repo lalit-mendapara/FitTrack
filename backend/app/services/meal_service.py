@@ -985,8 +985,11 @@ def optimize_meal_portions_iterative(db: Session, meals: List[Dict], targets: Di
             })
             
         # 2. Optimization Loop
-        iterations = 15
-        learning_rate = 0.15 # How aggressively to adjust ratios
+        iterations = 20  # Increased for better convergence
+        learning_rate = 0.15 
+        
+        # Use ingredient_mapper for role classification if possible, fallback to density
+        # We need to map work_items back to their role definitions
         
         for i in range(iterations):
             # A. Calculate Current Totals
@@ -1003,6 +1006,11 @@ def optimize_meal_portions_iterative(db: Session, meals: List[Dict], targets: Di
             # B. STRICT CALORIE NORMALIZATION (Master Constraint)
             # We ALWAYS prioritize calories.
             cal_scale = m_target_cal / cur_cal
+            
+            # Apply scaling ONLY to scalable items
+            # Fixed items (like "1 Apple", "2 Bread") should ideally not scale, but we might have to.
+            # Let's assume everything is scalable in this fallback mode, BUT we clamp it later.
+            
             for w in work_items:
                 w["weight"] *= cal_scale
             
@@ -1016,40 +1024,62 @@ def optimize_meal_portions_iterative(db: Session, meals: List[Dict], targets: Di
                 cur_cal += wt * w["density"]["cal"]
                 
             # C. Check Deviations & Adjust Ratios
-            # We adjust weights of specific groups relative to others
-            # If Protein is low, boost Protein items. The next Calorie Norm will pull others down.
-            
-            if i < iterations - 1: # Don't adjust on last step, just norm calories
+            if i < iterations - 1:
                 p_dev = (cur_p - m_target_p) / m_target_p if m_target_p > 0 else 0
                 c_dev = (cur_c - m_target_c) / m_target_c if m_target_c > 0 else 0
                 f_dev = (cur_f - m_target_f) / m_target_f if m_target_f > 0 else 0
                 
-                # Apply nudges based on role
+                # Apply nudges based on role (using density role if explicit role missing)
                 for w in work_items:
-                    role = w["role"]
+                    role = w.get("role", "mix")
                     factor = 1.0
                     
-                    if role == "protein":
-                        if p_dev < -0.05: factor += learning_rate # Boost protein source
+                    # Heuristic: If item matches a macro need, boost it
+                    d = w["density"]
+                    is_protein_dense = d['p'] * 4 > (d['c'] * 4 + d['f'] * 9) * 0.5
+                    is_carb_dense = d['c'] * 4 > (d['p'] * 4 + d['f'] * 9) * 0.5
+                    is_fat_dense = d['f'] * 9 > (d['p'] * 4 + d['c'] * 4) * 0.5
+                    
+                    if is_protein_dense:
+                        if p_dev < -0.05: factor += learning_rate
                         elif p_dev > 0.05: factor -= learning_rate
-                    elif role == "carb":
+                    elif is_carb_dense:
                         if c_dev < -0.05: factor += learning_rate
                         elif c_dev > 0.05: factor -= learning_rate
-                    elif role == "fat":
+                    elif is_fat_dense:
                         if f_dev < -0.05: factor += learning_rate
                         elif f_dev > 0.05: factor -= learning_rate
                     
-                    # Clamp constraints? Ensure weight doesn't vanish or explode too much
-                    # relative to original recipe capability (heuristic)
                     w["weight"] *= factor
-                    if w["weight"] < 10: w["weight"] = 10 # Minimum 10g
+                    
+                    # --- CRITICAL CONSTRAINT ENFORCEMENT ---
+                    # Prevent sides/salads from exploding
+                    name_lower = w["name"].lower()
+                    
+                    # Constraint 1: Salads/Sides cap
+                    is_side = any(x in name_lower for x in ["salad", "raita", "curd", "chutney", "pickle", "sauce"])
+                    if is_side:
+                        w["weight"] = min(w["weight"], 150) # Strict 150g cap for sides
+                        
+                    # Constraint 2: Oils/Fats cap
+                    is_oil = any(x in name_lower for x in ["oil", "ghee", "butter"])
+                    if is_oil:
+                        w["weight"] = min(w["weight"], 20) # 20g max for pure fats
+                        
+                    # Constraint 3: General max cap for ANY item
+                    if "water" in name_lower or "melon" in name_lower:
+                        pass # High volume allowed
+                    else:
+                        w["weight"] = min(w["weight"], 500) # 500g hard cap
+                        
+                    w["weight"] = max(10, w["weight"]) # Minimum 10g
         
         # 3. Final Formatting
         new_items_str = []
         final_p = final_c = final_f = final_cal = 0
         
         for w in work_items:
-            final_weight = round(w["weight"] / 5) * 5 # Round to nearest 5g
+            final_weight = round(w["weight"] / 5) * 5
             if final_weight < 5: final_weight = 5
             
             new_items_str.append(f"{int(final_weight)}g {w['name']}")
@@ -1061,7 +1091,7 @@ def optimize_meal_portions_iterative(db: Session, meals: List[Dict], targets: Di
             
         # Update Meal Object
         new_meal = meal.copy()
-        new_meal["portion_size"] = ", ".join(new_items_str)
+        new_meal["portion_size"] = " + ".join(new_items_str)
         new_meal["nutrients"] = {
             "p": round(final_p, 1),
             "c": round(final_c, 1),
@@ -1072,6 +1102,117 @@ def optimize_meal_portions_iterative(db: Session, meals: List[Dict], targets: Di
         optimized_meals.append(new_meal)
         
     return optimized_meals
+
+
+def _force_macro_compliance(work_items: List[Dict], target_cal: float, target_p: float, target_c: float, target_f: float):
+    """
+    [CRITICAL FIX]
+    Forcefully adjusts weights to meet macro targets mathematically, 
+    IGNORING soft constraints if necessary, but respecting HARD limits (e.g. Salad max).
+    
+    This is the "Panic Mode" solver when iterative optimization fails.
+    """
+    print(f"    ⚠️ Force Compliance: P:{target_p:.1f} C:{target_c:.1f} F:{target_f:.1f}")
+    
+    # 1. Identify sources
+    # We need to find the best candidate for each macro to adjust
+    p_source = None
+    c_source = None
+    f_source = None
+    
+    best_p_ratio = 0
+    best_c_ratio = 0
+    best_f_ratio = 0
+    
+    for w in work_items:
+        d = w["density"]
+        # Skip fixed items
+        if not w.get("scalable", True): continue
+        if w.get("fixed", False): continue
+        
+        # Calculate purity (how much of this macro per calorie)
+        # Avoid division by zero
+        total_d = d['p'] + d['c'] + d['f']
+        if total_d == 0: continue
+        
+        p_ratio = d['p'] / total_d
+        c_ratio = d['c'] / total_d
+        f_ratio = d['f'] / total_d
+        
+        if p_ratio > best_p_ratio and p_ratio > 0.3: # Must be at least 30% protein
+            best_p_ratio = p_ratio
+            p_source = w
+            
+        if c_ratio > best_c_ratio and c_ratio > 0.4: # Must be at least 40% carb
+            best_c_ratio = c_ratio
+            c_source = w
+            
+        if f_ratio > best_f_ratio and f_ratio > 0.4: # Must be at least 40% fat
+            best_f_ratio = f_ratio
+            f_source = w
+            
+    # 2. Calculate Current State
+    cur_p = sum(w["weight"] * w["density"]["p"] for w in work_items)
+    cur_c = sum(w["weight"] * w["density"]["c"] for w in work_items)
+    cur_f = sum(w["weight"] * w["density"]["f"] for w in work_items)
+    
+    # 3. Adjust Protein
+    if p_source and abs(cur_p - target_p) > 5:
+        diff_p = target_p - cur_p
+        # How much weight to add/remove?
+        # weight = diff / density_p
+        if p_source["density"]["p"] > 0:
+            weight_change = diff_p / p_source["density"]["p"]
+            
+            # Apply with dampening and limits
+            new_weight = p_source["weight"] + weight_change
+            
+            # Constraints
+            constraints = p_source.get("constraints", {"min": 50, "max": 400})
+            new_weight = max(constraints["min"], min(constraints["max"], new_weight))
+            
+            p_source["weight"] = new_weight
+            
+    # 4. Adjust Carbs
+    # Recalculate first
+    cur_c = sum(w["weight"] * w["density"]["c"] for w in work_items)
+    
+    if c_source and abs(cur_c - target_c) > 10:
+        diff_c = target_c - cur_c
+        if c_source["density"]["c"] > 0:
+            weight_change = diff_c / c_source["density"]["c"]
+            new_weight = c_source["weight"] + weight_change
+            
+            constraints = c_source.get("constraints", {"min": 50, "max": 400})
+            new_weight = max(constraints["min"], min(constraints["max"], new_weight))
+            
+            c_source["weight"] = new_weight
+            
+    # 5. Final Calorie Scaling (The Great Equalizer)
+    # We prioritize Calories above all else.
+    cur_cal = sum(w["weight"] * w["density"]["cal"] for w in work_items)
+    
+    if cur_cal > 0:
+        ratio = target_cal / cur_cal
+        
+        for w in work_items:
+            # Don't scale Fixed items
+            if w.get("fixed", False): continue
+            
+            # Scale
+            w["weight"] *= ratio
+            
+            # Final Hard Limits for Sanity
+            name_lower = w["name"].lower()
+            
+            # Hard limit for sides/salads (The "Huge Salad" Fix)
+            is_side = any(x in name_lower for x in ["salad", "raita", "curd", "chutney", "pickle"])
+            if is_side:
+                w["weight"] = min(w["weight"], 150)
+                
+            # Hard limit for everything else
+            w["weight"] = min(w["weight"], 600)
+            w["weight"] = max(10, w["weight"])
 
 
 def _detect_targeted_meals(prompt: str) -> List[str]:
@@ -1365,30 +1506,19 @@ def generate_meal_plan(db: Session, user_id: int, custom_prompt: str = None, exc
     )
     
     # B. Get EFFECTIVE Targets (Buffer/Feast Adjustments)
-    from app.services.social_event_service import get_effective_daily_targets
-    import datetime
-    
-    targets = get_effective_daily_targets(
-        db, user_id, base_targets, datetime.date.today()
-    )
+    # B. Get EFFECTIVE Targets (Buffer/Feast Adjustments)
+    # [FEAST MODE REFACTOR] 
+    # Use BASE targets always. Feast adjustments are now applied as OVERLAYS (FeastMealOverride).
+    targets = base_targets
     
     # C. Update Profile? 
-    # CRITICAL: Only update UserProfile if targets match Baseline (No Event Active)
-    # This protects the user's "True Reference" from being overwritten by temporary buffer drops.
+    # Always update profile to match baseline since we are not mutating targets anymore.
     if not getattr(profile, 'skip_macro_calculation', False):
-        # We only save to profile if these are the "Normal" targets
-        # Or... we strictly separate "Plan Targets" from "Profile Targets".
-        # For now, let's keep Profile as the "Source of Truth for Normal Days".
-        
-        is_baseline = (targets['calories'] == base_targets['calories'])
-        if is_baseline:
-            profile.calories = targets['calories']
-            profile.protein = targets['protein']
-            profile.fat = targets['fat']
-            profile.carbs = targets['carbs']
-            db.commit()
-        else:
-            logger.info(f"Social Buffer Active: Using effective targets ({targets['calories']} vs {base_targets['calories']}) without overwriting profile.")
+        profile.calories = targets['calories']
+        profile.protein = targets['protein']
+        profile.fat = targets['fat']
+        profile.carbs = targets['carbs']
+        db.commit()
     
     # 3. Detect Regeneration Scenario (no custom prompt but existing plan exists)
     is_regeneration_for_variety = False

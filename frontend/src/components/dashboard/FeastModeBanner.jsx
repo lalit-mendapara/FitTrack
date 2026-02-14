@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Sparkles, Utensils, Calendar, TrendingDown, PartyPopper, XCircle } from 'lucide-react';
-import { cancelSocialEvent } from '../../api/socialEventService';
+import feastModeService from '../../api/feastModeService';
 
 const FeastModeBanner = ({ event, onUpdate }) => {
     const [loading, setLoading] = useState(false);
@@ -14,7 +14,7 @@ const FeastModeBanner = ({ event, onUpdate }) => {
 
         setLoading(true);
         try {
-            await cancelSocialEvent();
+            await feastModeService.cancel();
             if (onUpdate) onUpdate();
         } catch (error) {
             console.error("Failed to cancel feast mode", error);

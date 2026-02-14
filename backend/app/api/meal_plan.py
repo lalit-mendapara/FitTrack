@@ -69,12 +69,14 @@ def regenerate_meal_plan_endpoint(
         
     return meal_plan
 
+from app.crud.meal_plan import get_current_meal_plan_with_overrides
+
 @router.get("/current", response_model=MealPlanResponse)
 def get_current_meal(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    meal_plan = get_current_meal_plan(db, current_user.id)
+    meal_plan = get_current_meal_plan_with_overrides(db, current_user.id)
     if not meal_plan:
         raise HTTPException(status_code=404, detail="Meal plan not found")
     

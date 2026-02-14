@@ -12,3 +12,4 @@ from app.models.tracking import FoodLog, WorkoutLog
 from app.models.notification import Notification
 from app.models.social_event import SocialEvent
 from app.models.chat import ChatHistory, ChatSession
+from app.models.feast_config import FeastConfig, FeastMealOverride

@@ -34,25 +34,28 @@ def generate_plan_for_user(user_id: int):
         # Uses last 8 plans to ensure no dish repetition
         meal_service.regenerate_meal_plan(db, user_id)
         
-        # 2. Feast Mode Agent: Auto-apply LLM adjustment if in banking phase
+        # 2. Feast Mode: Auto-complete & Generate Overrides
         try:
-            from app.services.social_event_service import get_active_event
-            from app.services.stats_service import StatsService
+            from app.services.feast_mode_manager import FeastModeManager
             from datetime import date as date_type
             
+            manager = FeastModeManager(db)
             today = date_type.today()
-            event = get_active_event(db, user_id, today)
             
-            if event and event.start_date <= today < event.event_date:
-                # User is in banking phase, apply smart adjustment
-                stats = StatsService(db)
-                input_profile = stats.get_user_profile(user_id)
-                effective_target = input_profile["caloric_target"]
-                
-                logger.info(f"[FeastAgent] Auto-adjusting for banking phase. Target: {effective_target}")
-                meal_service.adjust_meals_with_llm(db, user_id, effective_target, [])
+            # A. Auto-complete expired events
+            manager.auto_complete_expired(user_id)
+            
+            # B. Generate Overrides if active
+            config = manager.get_active_config(user_id, today)
+            if config:
+                logger.info(f"[FeastMode] Generating overrides for user {user_id}")
+                profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+                if profile:
+                    manager._generate_overrides_for_date(config, profile, today)
+                    db.commit()
+                    
         except Exception as e:
-            logger.error(f"[FeastAgent] Auto-adjustment failed for user {user_id}: {e}")
+            logger.error(f"[FeastMode] Scheduler handler failed for user {user_id}: {e}")
         
         # 3. Create Notification
         notif = Notification(

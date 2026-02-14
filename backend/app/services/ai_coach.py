@@ -146,23 +146,8 @@ class FitnessCoachService:
             
         print(f"[Social Intent] Checking intent for: '{message}'")
         
-        system_prompt = f"""
-        Current Date: {datetime.now().strftime("%Y-%m-%d (%A)")}
-        
-        Task: Analyze if the user is mentioning a FUTURE social event with high calorie intake.
-        If yes, identify the event name and date.
-        
-        Output JSON ONLY:
-        {{
-            "is_social_event": true/false,
-            "event_name": "Wedding" (or null),
-            "event_date": "YYYY-MM-DD" (or null)
-        }}
-        
-        Examples:
-        - "I have a wedding on Saturday" -> {{"is_social_event": true, "event_name": "Wedding", "event_date": "2026-02-14"}}
-        - "Going to a buffet tomorrow" -> {{"is_social_event": true, "event_name": "Buffet", "event_date": "2026-02-11"}}
-        """
+        from app.utils.llm_prompts.feast_prompts import FEAST_INTENT_DETECTION_PROMPT
+        system_prompt = FEAST_INTENT_DETECTION_PROMPT + f"\nCurrent Date: {datetime.now().strftime('%Y-%m-%d (%A)')}"
         
         try:
             from app.services.llm_service import call_llm_json
@@ -440,34 +425,11 @@ class FitnessCoachService:
 
                     if event_date:
                         from app.services.llm_service import call_llm_json
-                        confirm_prompt = f"""The AI assistant proposed a "Feast Mode" (calorie banking strategy) for an upcoming event.
-The proposal included: reducing daily calories and adding a special workout on event day.
-
-The user replied: "{msg}"
-
-Analyze the user's reply and output JSON ONLY:
-{{
-"action": "confirm" or "customize" or "reject",
-"custom_deduction": null,
-"skip_workout": false,
-"reason": "brief explanation"
-}}
-
-Rules:
-- "action" = "confirm" if the user agrees, accepts, says yes, or wants to activate as-is
-- "action" = "customize" if the user wants to CHANGE something (adjust calories, different deduction, modify the plan)
-- "action" = "reject" if the user declines, says no, or asks unrelated questions
-- "custom_deduction" = a NUMBER (kcal/day) ONLY if the user specifies a specific deduction value, else null
-- "skip_workout" = true ONLY if the user explicitly says they don't want workout changes
-- Examples:
-  - "yes" -> {{"action": "confirm", "custom_deduction": null, "skip_workout": false, "reason": "direct confirmation"}}
-  - "activate it" -> {{"action": "confirm", "custom_deduction": null, "skip_workout": false, "reason": "direct confirmation"}}
-  - "yes but skip the workout" -> {{"action": "confirm", "custom_deduction": null, "skip_workout": true, "reason": "user wants calorie-only mode"}}
-  - "I want to adjust calories" -> {{"action": "customize", "custom_deduction": null, "skip_workout": false, "reason": "user wants to change deduction"}}
-  - "make it 300 kcal" -> {{"action": "customize", "custom_deduction": 300, "skip_workout": false, "reason": "user specified custom deduction"}}
-  - "can we do 200 per day instead?" -> {{"action": "customize", "custom_deduction": 200, "skip_workout": false, "reason": "user wants lower deduction"}}
-  - "no thanks" -> {{"action": "reject", "custom_deduction": null, "skip_workout": false, "reason": "user declined"}}
-  - "what is feast mode?" -> {{"action": "reject", "custom_deduction": null, "skip_workout": false, "reason": "user asking for info"}}"""
+                        from app.utils.llm_prompts.feast_prompts import FEAST_CONFIRMATION_PROMPT
+                        confirm_prompt = FEAST_CONFIRMATION_PROMPT.format(
+                            event_name=event_name,
+                            event_date=event_date.strftime("%Y-%m-%d")
+                        )
 
                         try:
                             confirmation = call_llm_json(system_prompt=confirm_prompt, user_prompt=msg, temperature=0.0)
@@ -525,7 +487,8 @@ Rules:
             return {}
             
         user_id = state["user_id"]
-        from app.services.social_event_service import propose_banking_strategy, create_social_event
+        from app.services.feast_mode_manager import FeastModeManager
+        manager = FeastModeManager(self.db)
         
         # Scenario A: Confirmation (Create Event)
         if social_data.get("type") == "confirm":
@@ -541,83 +504,65 @@ Rules:
                  custom_deduction = pending.get("daily_deduction")
 
             # Recalculate proposal to get correct numbers (sanity check)
-            proposal = propose_banking_strategy(self.db, user_id, event_date, event_name, custom_deduction=custom_deduction)
+            proposal = manager.propose_strategy(user_id, event_date, event_name, custom_deduction=custom_deduction)
             
             if "error" in proposal:
                  return {"final_response": f"⚠️ Could not activate Feast Mode: {proposal['error']}", "source": "SocialService"}
             
             # Persist
-            create_social_event(self.db, user_id, proposal)
-            
-            # Patch Workout (skip if user explicitly opted out)
-            workout_patched = False
-            skip_workout = social_data.get("skip_workout", False)
-            if not skip_workout:
-                try:
-                    from app.services.workout_service import patch_limit_day_workout
-                    patch_limit_day_workout(self.db, user_id, event_date)
-                    workout_patched = True
-                except Exception as e:
-                    print(f"Failed to patch workout: {e}")
-                
-            # --- NEW: Mid-Day Meal Adjustment ---
-            meal_adjust_msg = ""
             try:
-                # If event starts TODAY (or banking phase starts today), we check for deficit
-                if proposal['daily_deduction'] > 0:
-                     # Calculate NEW effective target for today
-                     # We can fetch this from StatsService or calculate manually
-                     # Effective = Original - Deduction
-                     context = self.stats_service.get_full_user_context(user_id)
-                     # stats_service.get_user_profile already applies deduction if event is active!
-                     # So let's fetch profile again to be sure
-                     profile_data = self.stats_service.get_user_profile(user_id)
-                     new_target = profile_data['caloric_target']
-                     
-                     # Get Completed Meals (from progress)
-                     # progress = self.stats_service.get_user_progress(user_id) 
-                     # Actually, progress doesn't list meal names easily.
-                     # We need to know WHICH meals were eaten.
-                     # Heuristic: Check FoodLogs for today.
-                     from app.models.tracking import FoodLog
-                     today = datetime.now().date()
-                     logs = self.db.query(FoodLog).filter(FoodLog.user_id == user_id, FoodLog.date == today).all()
-                     completed_meals = list(set([l.meal_type.lower() for l in logs]))
-                     
-                     from app.services.meal_service import adjust_todays_meal_plan
-                     patch_result = adjust_todays_meal_plan(self.db, user_id, new_target, completed_meals)
+                skip_workout = social_data.get("skip_workout", False)
+                config = manager.activate(user_id, proposal, workout_boost=(not skip_workout))
+                
+                # --- Report Changes ---
+                # Check what overrides were generated for today
+                from datetime import date as date_type
+                today = date_type.today()
+                overrides = manager.get_overrides_for_date(user_id, today)
+                
+                meal_adjust_msg = ""
+                if overrides:
+                    changes_list = []
+                    total_adj = 0
+                    for meal_id, ov in overrides.items():
+                        # Calculate diff from original? 
+                        # We don't have original easily handy here without fetching base plan again, 
+                        # but we can show the new values or the note.
+                        changes_list.append(f"- **{meal_id.title()}**: {ov.adjustment_note}")
+                        # Approximate impact: daily_deduction
+                        
+                    meal_adjust_msg = (
+                        f"\n\n📉 **Plan Updated**: Starting today, I've adjusted your meals to begin banking."
+                    )
+                    if changes_list:
+                        intro = "\n*Adjustments for Today:*\n"
+                        meal_adjust_msg += intro + "\n".join(changes_list)
 
-                     if patch_result and abs(patch_result.get("diff_applied", 0)) > 0:
-                         meal_adjust_msg = (
-                             f"\n\n📉 **Plan Updated**: Since you've already eaten {', '.join(completed_meals).title()}, "
-                             f"I've adjusted your remaining meals by **{abs(patch_result['diff_applied']):.0f} kcal** to keep you on track."
-                         )
-                         if patch_result.get("changes"):
-                              changes_list = "\n".join([f"- {c}" for c in patch_result["changes"][:2]])
-                              meal_adjust_msg += f"\n*Adjusted:*\n{changes_list}"
+                response_msg = (
+                    f"**Feast Mode Activated!**\n\n"
+                    f"I've set up your **{proposal['total_banked']} kcal buffer** for {proposal['event_name']}.\n"
+                    f"Starting today, your daily calorie target is reduced by **{proposal['daily_deduction']} kcal**."
+                )
+                
+                if not skip_workout and config.workout_boost_enabled:
+                    response_msg += f"\n\nI've also updated your workout plan: A **Glycogen Depletion** session is scheduled for {event_date.strftime('%A')} morning!"
+                    
+                if meal_adjust_msg:
+                    response_msg += meal_adjust_msg
+                
+                # Clear pending event from memory on success
+                memory.set_session_data("pending_feast_event", None)
+                
+                return {
+                    "final_response": response_msg,
+                    "source": "SocialService"
+                }
+                
             except Exception as e:
-                 print(f"Failed to patch meals: {e}")
-            
-            response_msg = (
-                f"**Feast Mode Activated!**\n\n"
-                f"I've set up your **{proposal['total_banked']} kcal buffer** for {proposal['event_name']}.\n"
-                f"Starting today, your daily calorie target is reduced by **{proposal['daily_deduction']} kcal**."
-            )
-            
-            if workout_patched:
-                response_msg += f"\n\nI've also updated your workout plan: A **Glycogen Depletion** session is scheduled for {event_date.strftime('%A')} morning!"
-                
-            if meal_adjust_msg:
-                response_msg += meal_adjust_msg
-                
-            # Clear pending event from memory on success
-            memory = ChatMemoryService(state["session_id"])
-            memory.set_session_data("pending_feast_event", None)
-            
-            return {
-                "final_response": response_msg,
-                "source": "SocialService"
-            }
+                print(f"Activation failed: {e}")
+                import traceback
+                traceback.print_exc()
+                return {"final_response": "Sorry, something went wrong activating Feast Mode.", "source": "error"}
         
         # Scenario B: Customize (User wants to adjust the plan)
         if social_data.get("type") == "customize":
@@ -630,7 +575,7 @@ Rules:
             
             if custom_deduction:
                 # User gave a specific number — re-propose with it
-                proposal = propose_banking_strategy(self.db, user_id, event_date, event_name, custom_deduction=custom_deduction)
+                proposal = manager.propose_strategy(user_id, event_date, event_name, custom_deduction=custom_deduction)
                 
                 if "error" in proposal:
                     return {"final_response": f"⚠️ Could not update proposal: {proposal['error']}", "source": "SocialService"}
@@ -646,8 +591,7 @@ Rules:
                 )
             else:
                 # User wants to adjust but didn't say how — ask what they want
-                # Fetch current default proposal for reference
-                proposal = propose_banking_strategy(self.db, user_id, event_date, event_name)
+                proposal = manager.propose_strategy(user_id, event_date, event_name)
                 current_deduction = proposal.get('daily_deduction', 500) if 'error' not in proposal else 500
                 
                 response = (
@@ -658,7 +602,6 @@ Rules:
                 )
             
             # Save context for next turn
-            # Use the calculated daily_deduction from proposal if available to ensure we save the 'sanitized' value
             to_save_deduction = proposal['daily_deduction'] if (proposal and 'daily_deduction' in proposal) else 500
             if not proposal and custom_deduction:
                 to_save_deduction = custom_deduction
@@ -676,7 +619,7 @@ Rules:
         event_name = social_data.get("event_name")
         event_date = social_data.get("event_date")
         
-        proposal = propose_banking_strategy(self.db, user_id, event_date, event_name)
+        proposal = manager.propose_strategy(user_id, event_date, event_name)
         
         if "error" in proposal:
             return {"final_response": f"I see you have an event, but I can't enable Feast Mode: {proposal['error']}", "source": "SocialService"}
@@ -839,6 +782,14 @@ Rules:
         """Node: Fetches the 'Auditor' profile and progress."""
         user_id = state["user_id"]
         context = self.stats_service.get_full_user_context(user_id)
+        
+        # [FEAST MODE] Inject Feast Context
+        from app.services.feast_mode_manager import FeastModeManager
+        feast_manager = FeastModeManager(self.db)
+        feast_ctx = feast_manager.get_feast_context_for_ai(user_id)
+        if feast_ctx:
+            context["feast_mode"] = feast_ctx
+            
         return {"user_context": context}
 
     @observe(name="node_fetch_history")
@@ -1333,6 +1284,25 @@ Rules:
         2. REAL-TIME PROGRESS (THE AUDITOR):
            {progress_str}
         """
+        
+        # [FEAST MODE] Context Injection
+        feast_data = context.get("feast_mode")
+        if feast_data:
+            from app.utils.llm_prompts.feast_prompts import FEAST_AI_COACH_CONTEXT_BLOCK
+            # Use safe get for base_calories
+            base_cals = context.get('profile', {}).get('targets', {}).get('calories', 2000)
+            
+            feast_block = FEAST_AI_COACH_CONTEXT_BLOCK.format(
+                event_name=feast_data['event_name'],
+                phase=feast_data['phase'],
+                event_date=feast_data['event_date'],
+                days_remaining=feast_data['days_remaining'],
+                daily_deduction=feast_data['daily_deduction'],
+                base_calories=base_cals,
+                effective_calories=feast_data['effective_calories'],
+                todays_overrides="\\n".join(feast_data['todays_overrides']) if feast_data.get('todays_overrides') else "None"
+            )
+            prompt += f"\\n{feast_block}\\n"
     
         if include_diet:
             prompt += f"""

@@ -22,3 +22,5 @@ class User(Base):
         return dob_value
     
     profile = relationship("UserProfile",back_populates="user")
+    feast_configs = relationship("FeastConfig", back_populates="user")
+    feast_meal_overrides = relationship("FeastMealOverride", back_populates="user")

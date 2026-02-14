@@ -993,3 +993,26 @@ def get_workout_calendar(
         "date_range": date_range_p, # "Feb 03 - Feb 09"
         "days": days_data
     }
+
+@router.get("/workout-history-status", status_code=status.HTTP_200_OK)
+def check_workout_history(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Check if the user has any workout logs or sessions in the database.
+    Used to prompt the user about clearing history during plan regeneration.
+    """
+    # Check if any logs exist
+    has_logs = db.query(WorkoutLog).filter(WorkoutLog.user_id == current_user.id).first() is not None
+    
+    # Check if any sessions exist
+    has_sessions = db.query(WorkoutSession).filter(WorkoutSession.user_id == current_user.id).first() is not None
+    
+    return {
+        "has_history": has_logs or has_sessions,
+        "details": {
+            "has_logs": has_logs,
+            "has_sessions": has_sessions
+        }
+    }

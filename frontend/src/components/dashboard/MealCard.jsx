@@ -171,18 +171,50 @@ const MealCard = ({ meal, loggedMeals, onLogUpdate, socialEvent, onPlanRefresh }
                    )}
                 </div>
              </div>
-             {/* Desktop Calories Display (Hidden on mobile if needed, but useful to keep) */}
+             {/* Desktop Calories Display */}
              <div className="text-right hidden md:block">
-                <span className="text-2xl font-black text-indigo-600 block">{Number((meal.nutrients.p * 4) + (meal.nutrients.c * 4) + (meal.nutrients.f * 9)).toFixed(0)}</span>
-                <span className="text-xs text-gray-400 uppercase font-bold tracking-wider">Kcal</span>
+                {meal.original_nutrients ? (
+                    <div className="flex flex-col items-end">
+                        <span className="text-xs text-gray-400 line-through decoration-red-400 decoration-2">
+                             {Number((meal.original_nutrients.p * 4) + (meal.original_nutrients.c * 4) + (meal.original_nutrients.f * 9)).toFixed(0)}
+                        </span>
+                        <span className="text-2xl font-black text-purple-600 block">
+                            {Number((meal.nutrients.p * 4) + (meal.nutrients.c * 4) + (meal.nutrients.f * 9)).toFixed(0)}
+                        </span>
+                        <span className="text-[10px] font-bold text-purple-600 px-1.5 rounded bg-purple-100 uppercase tracking-wide">
+                            Feast Mode
+                        </span>
+                    </div>
+                ) : (
+                    <>
+                        <span className="text-2xl font-black text-indigo-600 block">{Number((meal.nutrients.p * 4) + (meal.nutrients.c * 4) + (meal.nutrients.f * 9)).toFixed(0)}</span>
+                        <span className="text-xs text-gray-400 uppercase font-bold tracking-wider">Kcal</span>
+                    </>
+                )}
              </div>
           </div>
 
           <div className="mb-5">
              {/* Mobile Calories Row */}
             <div className="flex md:hidden items-baseline gap-2 mb-2">
-                 <span className="text-2xl font-black text-indigo-600">{Number((meal.nutrients.p * 4) + (meal.nutrients.c * 4) + (meal.nutrients.f * 9)).toFixed(0)}</span>
-                 <span className="text-xs text-gray-400 uppercase font-bold tracking-wider">Kcal</span>
+                 {meal.original_nutrients ? (
+                    <>
+                         <span className="text-sm text-gray-400 line-through decoration-red-400 decoration-2">
+                             {Number((meal.original_nutrients.p * 4) + (meal.original_nutrients.c * 4) + (meal.original_nutrients.f * 9)).toFixed(0)}
+                        </span>
+                        <span className="text-2xl font-black text-purple-600">
+                            {Number((meal.nutrients.p * 4) + (meal.nutrients.c * 4) + (meal.nutrients.f * 9)).toFixed(0)}
+                        </span>
+                        <span className="text-[10px] font-bold text-purple-600 px-1.5 rounded bg-purple-100 uppercase tracking-wide">
+                            Feast
+                        </span>
+                    </>
+                 ) : (
+                    <>
+                        <span className="text-2xl font-black text-indigo-600">{Number((meal.nutrients.p * 4) + (meal.nutrients.c * 4) + (meal.nutrients.f * 9)).toFixed(0)}</span>
+                        <span className="text-xs text-gray-400 uppercase font-bold tracking-wider">Kcal</span>
+                    </>
+                 )}
             </div>
 
             <h4 className="text-lg md:text-xl font-bold text-gray-800 mb-2 leading-tight" title={meal.dish_name}>{meal.dish_name.replace(/\(Veg\)|\(Non-Veg\)/g, '').trim()}</h4>

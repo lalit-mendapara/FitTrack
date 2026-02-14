@@ -151,6 +151,70 @@ def update_single_meal(db: Session, user_profile_id: int, meal_id: str, updated_
         return meal
         
     except Exception as e:
-        print(f"Error updating meal {meal_id}: {e}")
         db.rollback()
         return None
+
+def get_current_meal_plan_with_overrides(db: Session, user_id: int):
+    """
+    Returns meal plan with feast overrides merged in. Original values preserved.
+    """
+    from datetime import date
+    base_plan = get_current_meal_plan(db, user_id)
+    if not base_plan or not base_plan.meal_plan:
+        return base_plan
+        
+    try:
+        from app.services.feast_mode_manager import FeastModeManager
+        manager = FeastModeManager(db)
+        overrides = manager.get_overrides_for_date(user_id, date.today())
+        
+        if not overrides:
+            return base_plan
+            
+        # Apply Overrides
+        updated_items = []
+        total_p = total_c = total_f = total_cal = 0.0
+        
+        for item in base_plan.meal_plan:
+            # Check for override
+            override = overrides.get(item.meal_id.lower())
+            
+            if override:
+                # Store original values
+                item.original_nutrients = item.nutrients
+                item.original_portion_size = item.portion_size
+                
+                # Apply new values
+                item.nutrients = NutrientDetail(
+                    p=override.adjusted_protein,
+                    c=override.adjusted_carbs,
+                    f=override.adjusted_fat,
+                )
+                item.portion_size = override.adjusted_portion_size
+                item.feast_notes = [override.adjustment_note] if override.adjustment_note else []
+                # item.is_user_adjusted = True # Maybe? Or keep separate flag
+            
+            updated_items.append(item)
+            
+            # Recalculate totals
+            total_p += item.nutrients.p
+            total_c += item.nutrients.c
+            total_f += item.nutrients.f
+            
+        total_cal = (total_p * 4) + (total_c * 4) + (total_f * 9)
+        
+        # Update Generated Totals in Response
+        base_plan.daily_generated_totals = NutrientTotals(
+            calories=total_cal,
+            protein=total_p,
+            carbs=total_c,
+            fat=total_f
+        )
+        base_plan.meal_plan = updated_items
+        base_plan.verification += f" (Merged {len(overrides)} Overrides)"
+        
+        return base_plan
+        
+    except Exception as e:
+        print(f"Error applying overrides: {e}")
+        return base_plan # Return base plan if merge fails

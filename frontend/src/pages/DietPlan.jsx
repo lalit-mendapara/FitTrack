@@ -10,7 +10,7 @@ import { Calendar, Apple, Coffee, Moon, Sun, ChevronRight, RefreshCw, X, Message
 import { logMeal, deleteMealLog, getDailyDietLogs, deleteDailyDietLogs } from '../api/tracking';
 import { toast } from 'react-toastify';
 import MealCard from '../components/dashboard/MealCard';
-import { getActiveSocialEvent } from '../api/socialEventService';
+import feastModeService from '../api/feastModeService';
 import FeastModeBanner from '../components/dashboard/FeastModeBanner';
 
 // CONSTANTS REMOVED (Moved to MealCard or unused)
@@ -72,10 +72,10 @@ const DietPlan = ({ isEmbedded = false }) => {
   const regenerateMenuRef = useRef(null);
 
   // Feast Mode State
-  const [socialEvent, setSocialEvent] = useState(null);
+  const [feastStatus, setFeastStatus] = useState(null);
 
   useEffect(() => {
-    getActiveSocialEvent().then(event => setSocialEvent(event));
+    feastModeService.getStatus().then(status => setFeastStatus(status));
   }, []);
 
   // State for persistence
@@ -316,11 +316,11 @@ const DietPlan = ({ isEmbedded = false }) => {
       )}
 
       {/* Feast Mode Banner */}
-      {socialEvent && (
+      {feastStatus?.is_active && (
         <FeastModeBanner 
-          event={socialEvent} 
+          event={feastStatus.config} 
           onUpdate={() => {
-            getActiveSocialEvent().then(event => setSocialEvent(event));
+            feastModeService.getStatus().then(status => setFeastStatus(status));
             refreshPlan();
           }} 
         />
@@ -335,15 +335,15 @@ const DietPlan = ({ isEmbedded = false }) => {
                   <h1 className="text-3xl font-black text-gray-900 tracking-tight mb-1">
                     Your Daily <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-indigo-400">Nutrition</span>
                   </h1>
-                  {socialEvent && socialEvent.status === 'BANKING' ? (
+                  {feastStatus?.is_active && feastStatus.config?.status === 'BANKING' ? (
                     <p className="text-sm font-semibold text-purple-600 mt-1 flex items-center gap-1.5 flex-wrap">
-                      Banking {Math.round(socialEvent.daily_deduction)} kcal/day for <span className="font-black">{socialEvent.event_name}</span>
+                      Banking {Math.round(feastStatus.config.daily_deduction)} kcal/day for <span className="font-black">{feastStatus.config.event_name}</span>
                       <span className="text-gray-400 mx-1">•</span>
                       Today's target: {plan ? Math.round(plan.daily_generated_totals?.calories || 0) : '—'} kcal
                     </p>
-                  ) : socialEvent && socialEvent.status === 'FEAST_DAY' ? (
+                  ) : feastStatus?.is_active && feastStatus.config?.status === 'FEAST_DAY' ? (
                     <p className="text-sm font-semibold text-amber-600 mt-1 flex items-center gap-1.5 flex-wrap">
-                      Feast Day: +{socialEvent.target_bank_calories} kcal bonus for <span className="font-black">{socialEvent.event_name}</span>
+                      Feast Day: +{feastStatus.config.target_bank_calories} kcal bonus for <span className="font-black">{feastStatus.config.event_name}</span>
                     </p>
                   ) : (
                     <p className="text-sm text-gray-500 font-medium max-w-sm mx-auto lg:mx-0">
@@ -510,7 +510,7 @@ const DietPlan = ({ isEmbedded = false }) => {
                         meal={meal} 
                         loggedMeals={loggedMeals}
                         onLogUpdate={fetchLogs}
-                        socialEvent={socialEvent}
+                        socialEvent={feastStatus?.config}
                         onPlanRefresh={refreshPlan}
                      />
                   ))}

@@ -153,3 +153,16 @@ export const getWeeklyWorkoutOverview = async () => {
         throw error;
     }
 };
+/**
+ * Check if the user has any workout history (logs or sessions).
+ * @returns {Promise<{has_history: boolean}>}
+ */
+export const checkWorkoutHistory = async () => {
+    try {
+        const response = await axios.get('/tracking/workout-history-status');
+        return response.data;
+    } catch (error) {
+        console.error("Error checking workout history:", error);
+        return { has_history: false }; // Fallback
+    }
+};

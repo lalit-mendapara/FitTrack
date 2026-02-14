@@ -23,7 +23,10 @@ def run_migrations():
         print("[Alembic] Migrations applied successfully")
     except Exception as e:
         print(f"[Alembic] Migration failed, falling back to create_all: {e}")
-        Base.metadata.create_all(bind=engine)
+        
+    # Ensure all tables exist (critical for new models not yet in Alembic)
+    print("[Startup] Ensuring all tables exist via create_all...")
+    Base.metadata.create_all(bind=engine)
 
 run_migrations()
 
@@ -40,7 +43,7 @@ allowed_origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -59,6 +62,8 @@ from app.api import notifications
 app.include_router(notifications.router)
 from app.api import social_events
 app.include_router(social_events.router)
+from app.api import feast_mode
+app.include_router(feast_mode.router)
 
 # Root endpoint
 @app.get("/")

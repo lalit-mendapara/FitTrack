@@ -8,7 +8,7 @@ import { useWorkoutPlan } from '../hooks/useWorkoutPlan'; // Hook Import
 import { Link, useSearchParams } from 'react-router-dom';
 import GenerationOverlay from '../components/layout/GenerationOverlay';
 import WorkoutSessionModal from '../components/workout/WorkoutSessionModal';
-import { logWorkoutSession, deleteDailyWorkoutLogs, getDailyWorkoutLogs, deleteAllWorkoutLogs } from '../api/tracking';
+import { logWorkoutSession, deleteDailyWorkoutLogs, getDailyWorkoutLogs, deleteAllWorkoutLogs, checkWorkoutHistory } from '../api/tracking';
 import { toast } from 'react-toastify';
 
 
@@ -169,40 +169,50 @@ const WorkoutPlan = ({ isEmbedded = false }) => {
       generatePlan(partialPrompt);
   };
 
-  const handleGenerateClick = (prompt = null) => {
+  // --- History Check Logic ---
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+
+  const handleGenerateClick = async (prompt = null) => {
       setShowCustomPromptModal(false);
+      setPendingPrompt(prompt);
       
-      // Check for existing logs first
+      // 1. Check for TODAY's logs (Immediate Conflict)
       if (loggedWorkouts.length > 0 || hasSession) {
-          setPendingPrompt(prompt);
           setShowConflictModal(true);
       } 
-      // Reuse existing logic for showing reset confirmation if plan exists but no logs today?
-      // Actually if plan exists but no logs, we usually just regenerate. 
-      // But the original code had a reset confirmation if(plan). 
-      // Let's keep that structure for when there are NO logs today but there is a plan.
-      else if (plan) {
-         setPendingPrompt(prompt);
-         setShowResetConfirmation(true);
-      } else {
-         generatePlan(prompt);
+      // 2. Check for ANY history (User Request)
+      else {
+          try {
+              const { has_history } = await checkWorkoutHistory();
+              if (has_history) {
+                  setShowHistoryModal(true);
+              } else {
+                  // No history, just generate
+                  generatePlan(prompt);
+              }
+          } catch (e) {
+              // Fallback if check fails
+              generatePlan(prompt);
+          }
       }
   };
 
-  const handleConfirmReset = async () => {
-     try {
-         // Clear TODAY's logs only
-         const today = new Date().toISOString().split('T')[0];
-         await deleteDailyWorkoutLogs(today); 
+  const handleClearHistoryAndRegenerate = async () => {
+      try {
+          await deleteAllWorkoutLogs(); 
+          setLoggedWorkouts([]); 
+          setHasSession(false);
+          setShowHistoryModal(false);
+          
+          generatePlan(pendingPrompt, { ignore_history: true });
+      } catch (e) {
+          toast.error("Failed to clear logs.");
+      }
+  };
 
-         setShowResetConfirmation(false);
-         
-         // Generate new plan (Future)
-         generatePlan(pendingPrompt);
-     } catch (e) {
-         console.error("Reset logs error:", e);
-         toast.error(`Failed to reset logs: ${e.message}`);
-     }
+  const handleKeepHistoryAndRegenerate = () => {
+      setShowHistoryModal(false);
+      generatePlan(pendingPrompt);
   };
   const [startTime, setStartTime] = useState(null);
   const [sessionDuration, setSessionDuration] = useState(0);
@@ -613,32 +623,41 @@ const WorkoutPlan = ({ isEmbedded = false }) => {
           </div>
         </div>
       )}
-      {/* Reset Confirmation Modal */}
-      {showResetConfirmation && (
+      {/* History Check Modal */}
+      {showHistoryModal && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
            <div className="bg-white rounded-[2rem] p-8 shadow-2xl max-w-md w-full border border-gray-100 relative overflow-hidden">
                <div className="text-center mb-6">
-                   <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center mx-auto mb-4 text-amber-500">
-                      <AlertCircle size={32} />
+                   <div className="w-16 h-16 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-4 text-indigo-500">
+                      <RefreshCw size={32} />
                    </div>
-                   <h3 className="text-2xl font-black text-gray-900 mb-2">Update Remaining Schedule?</h3>
+                   <h3 className="text-2xl font-black text-gray-900 mb-2">Existing Workout History</h3>
                    <p className="text-gray-500">
-                     This will clear your workout logs for <span className="font-bold text-gray-700">today</span> and regenerate the plan for the rest of the week. Tracking data for previous days will be safe.
+                     We found previous workout logs. How would you like to proceed with the new plan?
                    </p>
                </div>
                
                <div className="space-y-3">
                    <button 
-                      onClick={handleConfirmReset}
+                      onClick={handleClearHistoryAndRegenerate}
                       disabled={generating}
-                      className="w-full py-3.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all transform active:scale-95 flex items-center justify-center gap-2"
+                      className="w-full py-3.5 bg-red-50 text-red-600 font-bold rounded-xl hover:bg-red-100 border border-red-100 shadow-sm transition-all transform active:scale-95 flex items-center justify-center gap-2"
                    >
                       <RefreshCw size={18} />
-                      {generating ? 'Regenerating...' : 'Yes, Regenerate Plan'}
+                      {generating ? 'Regenerating...' : 'Clear History & Start Fresh'}
                    </button>
                    
                    <button 
-                      onClick={() => setShowResetConfirmation(false)}
+                      onClick={handleKeepHistoryAndRegenerate}
+                      disabled={generating}
+                      className="w-full py-3.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all transform active:scale-95 flex items-center justify-center gap-2"
+                   >
+                      <CheckCircle size={18} />
+                      {generating ? 'Regenerating...' : 'Keep History & Update Plan'}
+                   </button>
+                   
+                   <button 
+                      onClick={() => setShowHistoryModal(false)}
                       disabled={generating}
                       className="w-full py-3.5 text-gray-500 font-bold hover:text-gray-700 transition-colors"
                    >
