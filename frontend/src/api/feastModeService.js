@@ -87,6 +87,20 @@ export const feastModeService = {
   },
 
   /**
+   * Get preview of deactivation consequences
+   * @returns {Promise<object>} Preview details
+   */
+  getDeactivationPreview: async () => {
+    try {
+      const response = await api.post('/feast-mode/deactivate-preview');
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching deactivation preview:', error);
+      throw error;
+    }
+  },
+
+  /**
    * Update mid-day adjustments
    * @param {object} params { adjust_calories: number, completed_meals: string[] }
    * @returns {Promise<object>} Result message

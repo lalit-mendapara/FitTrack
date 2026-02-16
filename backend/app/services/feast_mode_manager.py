@@ -51,8 +51,23 @@ class FeastModeManager:
             target_bank = daily_deduction * days_until
         
         # Get base targets for preview
+        # This ensures we start from the LLM-generated baseline
+        # Get base targets for preview
+        # This ensures we start from the LLM-generated baseline
         profile = self.db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
         base_cals = profile.calories if profile else 2000
+        
+        # Calculate from active meal plan items
+        meal_plans = self.db.query(MealPlan).filter(MealPlan.user_profile_id == profile.id).all() if profile else []
+        if meal_plans:
+             calculated_cals = 0
+             for m in meal_plans:
+                 if m.nutrients and isinstance(m.nutrients, dict):
+                     calculated_cals += m.nutrients.get("calories", 0)
+             
+             # If we have a valid sum, use it. Otherwise fallback to profile.
+             if calculated_cals > 500: # Safety check against empty plans
+                 base_cals = calculated_cals
 
         return {
             "event_name": event_name,
@@ -65,10 +80,11 @@ class FeastModeManager:
             "effective_calories": base_cals - daily_deduction
         }
 
-    def activate(self, user_id: int, proposal: dict, workout_boost: bool = True):
+    def activate(self, user_id: int, proposal: dict, workout_boost: bool = True, workout_preference: str = "standard"):
         """
         Activates Feast Mode based on a proposal.
         Snapshots current profile targets.
+        workout_preference: 'standard' (Depletion), 'cardio' (Cardio Focus), 'skip' (No Workout Change)
         """
         # Deactivate any existing active config
         existing = self.get_active_config(user_id)
@@ -79,6 +95,31 @@ class FeastModeManager:
         if not profile:
             raise ValueError("UserProfile not found")
 
+        # Get Base Snapshots from Meal Plan (Preferred) or Profile
+        base_cals = profile.calories
+        base_p = profile.protein
+        base_c = profile.carbs
+        base_f = profile.fat
+        
+        meal_plans = self.db.query(MealPlan).filter(MealPlan.user_profile_id == profile.id).all()
+        if meal_plans:
+            calc_cals = 0
+            calc_p = 0
+            calc_c = 0
+            calc_f = 0
+            for m in meal_plans:
+                if m.nutrients and isinstance(m.nutrients, dict):
+                    calc_cals += m.nutrients.get("calories", 0)
+                    calc_p += m.nutrients.get("protein", 0)
+                    calc_c += m.nutrients.get("carbs", 0)
+                    calc_f += m.nutrients.get("fat", 0)
+            
+            if calc_cals > 500:
+                base_cals = calc_cals
+                base_p = calc_p
+                base_c = calc_c
+                base_f = calc_f
+
         # Create Config
         new_config = FeastConfig(
             user_id=user_id,
@@ -87,27 +128,36 @@ class FeastModeManager:
             target_bank_calories=proposal["total_banked"],
             daily_deduction=proposal["daily_deduction"],
             start_date=proposal["start_date"],
-            workout_boost_enabled=workout_boost,
+            workout_boost_enabled=workout_boost and workout_preference != "skip",
             user_selected_deduction=proposal.get("custom_deduction"), 
-            base_calories=profile.calories,
-            base_protein=profile.protein,
-            base_carbs=profile.carbs,
-            base_fat=profile.fat,
+            base_calories=base_cals,
+            base_protein=base_p,
+            base_carbs=base_c,
+            base_fat=base_f,
             status="BANKING",
             is_active=True
         )
         
+        # 1. Build & Store Feast Workout (if enabled AND not skipped)
+        if workout_boost and workout_preference != "skip":
+            from app.services.workout_service import build_feast_workout_from_db
+            feast_workout = build_feast_workout_from_db(
+                self.db, 
+                user_id, 
+                proposal["event_date"],
+                preference=workout_preference
+            )
+            new_config.feast_workout_data = feast_workout
+
         self.db.add(new_config)
         self.db.flush() # Get ID
         
         # Generate overrides for today
         self._generate_overrides_for_date(new_config, profile, date.today())
         
-        # Patch workout if enabled
-        if workout_boost:
-            from app.services.workout_service import patch_limit_day_workout
-            patch_limit_day_workout(self.db, user_id, proposal["event_date"])
-            
+        # Note: We NO LONGER patch the existing workout plan. 
+        # The calendar endpoint will dynamically inject 'feast_workout_data' on the event date.
+
         self.db.commit()
         return new_config
 
@@ -148,12 +198,17 @@ class FeastModeManager:
         remaining_budget = eff_calories - consumed_cals
         
         # 5. Generate Overrides
-        # Try LLM first
+        overrides = []
         try:
-            overrides = self._generate_overrides_via_llm(config, remaining_items, remaining_budget, target_date)
-        except Exception as e:
-            logger.error(f"LLM Override Gen failed: {e}. Fallback to ratio.")
-            overrides = self._generate_overrides_via_ratio(config, remaining_items, remaining_budget, target_date)
+            # Try LLM first
+            try:
+                overrides = self._generate_overrides_via_llm(config, remaining_items, remaining_budget, target_date)
+            except Exception as e:
+                logger.error(f"LLM Override Gen failed: {e}. Fallback to ratio.")
+                overrides = self._generate_overrides_via_ratio(config, remaining_items, remaining_budget, target_date)
+        except Exception as heavy_fail:
+             logger.error(f"CRITICAL: Even fallback ratio failed: {heavy_fail}")
+             overrides = [] # Proceed without overrides rather than crashing
             
         # 6. Save Overrides
         for ov in overrides:
@@ -243,9 +298,13 @@ Return ALL meals.
 
     def _generate_overrides_via_ratio(self, config: FeastConfig, remaining_items: list[MealPlan], budget: float, target_date: date):
         """
-        Fallback method using math ratios.
+        Fallback method using math ratios. Safe against None values.
         """
-        current_planned = sum(m.nutrients.get('calories', 0) for m in remaining_items)
+        current_planned = 0
+        for m in remaining_items:
+            if m.nutrients and isinstance(m.nutrients, dict):
+                 current_planned += m.nutrients.get('calories', 0)
+                 
         if current_planned == 0: return []
         
         ratio = budget / current_planned
@@ -364,10 +423,9 @@ Return ALL meals.
         config.is_active = False
         config.status = "CANCELLED"
         
-        # Restore Workout
-        if config.workout_boost_enabled:
-            from app.services.workout_service import restore_workout_plan
-            restore_workout_plan(self.db, user_id, config.event_date)
+        # Note: No need to call restore_workout_plan() anymore.
+        # Since we stopped patching the weekly_schedule, the original schedule
+        # automatically shows up when is_active becomes False.
             
         self.db.commit()
         return {"message": "Feast Mode cancelled", "restored_calories": config.base_calories}
@@ -388,6 +446,35 @@ Return ALL meals.
             
         self.db.commit()
         return True
+
+    def inject_feast_workout_into_plan(self, user_id: int, workout_plan_schedule: dict) -> dict:
+        """
+        Injects the Feast Mode workout into the provided weekly_schedule dictionary 
+        if the event date falls on one of the schedule days.
+        """
+        config = self.get_active_config(user_id)
+        if not config or not config.feast_workout_data:
+            return workout_plan_schedule
+
+        # Check if event date matches any day in the schedule
+        event_day_name = config.event_date.strftime("%A") # e.g. "Friday"
+        
+        updated_schedule = workout_plan_schedule.copy()
+        
+        for key, day_data in updated_schedule.items():
+            if day_data.get("day_name") == event_day_name:
+                # Injection!
+                feast_data = config.feast_workout_data
+                if isinstance(feast_data, dict):
+                    # We merge/replace to preserve structure but update content
+                    day_data["workout_name"] = feast_data.get("workout_name", "Feast Mode Workout")
+                    day_data["focus"] = feast_data.get("focus", "Glycogen Depletion")
+                    day_data["exercises"] = feast_data.get("exercises", [])
+                    day_data["cardio_exercises"] = feast_data.get("cardio_exercises", [])
+                    day_data["is_rest"] = False
+                    day_data["notes"] = "Special workout for your upcoming Feast!"
+                
+        return updated_schedule
 
     def update_mid_day(self, user_id: int, new_deduction: int = None, workout_boost: bool = None):
         config = self.get_active_config(user_id)
@@ -442,4 +529,37 @@ Return ALL meals.
             "effective_calories": config.base_calories - config.daily_deduction if phase == "BANKING" else config.base_calories + config.target_bank_calories,
             "workout_boost": config.workout_boost_enabled,
             "todays_overrides": override_summary
+        }
+
+    def get_deactivation_preview(self, user_id: int):
+        """
+        Returns what will happen if Feast Mode is cancelled now.
+        """
+        config = self.get_active_config(user_id)
+        if not config:
+            return {"error": "No active feast mode"}
+            
+        today = date.today()
+        
+        # Current State
+        current_effective = self.get_effective_targets(user_id, today)
+        
+        # Forecasted State (Restored)
+        # We use the snapshot base_calories
+        restored_calories = config.base_calories
+        
+        # Workout Impact
+        workout_msg = "No changes to workout schedule."
+        if config.workout_boost_enabled:
+             workout_msg = f"The Depletion Workout on {config.event_date} will be removed."
+             
+        days_active = (today - config.start_date).days
+        total_banked_so_far = max(0, days_active * config.daily_deduction)
+        
+        return {
+            "current_daily_calories": current_effective["calories"],
+            "restored_daily_calories": restored_calories,
+            "banked_calories_lost": total_banked_so_far,
+            "workout_status": workout_msg,
+            "event_name": config.event_name
         }

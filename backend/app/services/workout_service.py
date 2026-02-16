@@ -422,6 +422,167 @@ def generate_workout_plan(db: Session, request_data: WorkoutPlanRequestData):
         "workout_plan": generated_plan,
         "profile_data": profile_data.dict()
     }
+
+def build_feast_workout_from_db(db: Session, user_id: int, event_date: date, preference: str = "standard") -> Dict[str, Any]:
+    """
+    Builds a special 'Glycogen Depletion' or 'Cardio Focus' workout for Feast Mode.
+    preference: 'standard' (Depletion Strength + HIIT) or 'cardio' (Pure Cardio/HIIT).
+    """
+    from datetime import date
+    
+    # 1. Get User Profile for Experience Level
+    profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+    if not profile:
+        raise ValueError("UserProfile not found")
+        
+    # Get Experience Level
+    prefs = db.query(WorkoutPreferences).filter(WorkoutPreferences.user_profile_id == profile.id).first()
+    exp_level = prefs.experience_level if prefs else "Intermediate"
+    
+    weekday_map = {0: "Monday", 1: "Tuesday", 2: "Wednesday", 3: "Thursday", 4: "Friday", 5: "Saturday", 6: "Sunday"}
+    day_name = weekday_map[event_date.weekday()]
+
+    # Fetch Cardio Exercises (Used in both modes)
+    cardio_exercises = db.query(Exercise).filter(Exercise.category == "Cardio").all()
+    
+    # --- CARDIO MODE ---
+    if preference == "cardio":
+        workout_dict = {
+            "day_name": day_name,
+            "workout_name": "🔥 FEAST MODE: Max Calorie Burn",
+            "primary_muscle_group": "Cardio & Core",
+            "focus": "Calorie Expenditure",
+            "session_duration_min": 60,
+            "exercises": [],
+            "cardio_exercises": []
+        }
+        
+        # Select 3-4 Cardio/HIIT exercises
+        # Mix of LISS (Long Duration) and HIIT (Intervals)
+        
+        # 1. Main LISS (Run/Cycle/Row)
+        liss_candidates = [c for c in cardio_exercises if any(k in c.name.lower() for k in ["run", "cycle", "row", "elliptical"])]
+        if not liss_candidates: liss_candidates = cardio_exercises
+        
+        main_cardio = liss_candidates[0] if liss_candidates else None
+        if main_cardio:
+             workout_dict["cardio_exercises"].append({
+                "exercise": main_cardio.name,
+                "image_url": main_cardio.image_url,
+                "duration": "30 mins",
+                "intensity": "Moderate-High",
+                "notes": "Steady state to burn calories",
+                "calories_burned": 300,
+                "instructions": ["Maintain steady heart rate", "Focus on breathing"]
+            })
+            
+        # 2. HIIT Finisher
+        hiit_candidates = [c for c in cardio_exercises if any(k in c.name.lower() for k in ["sprint", "hiit", "jump", "burpee"])]
+        if not hiit_candidates: hiit_candidates = cardio_exercises[1:] if len(cardio_exercises) > 1 else []
+        
+        for c in hiit_candidates[:2]:
+             workout_dict["cardio_exercises"].append({
+                "exercise": c.name,
+                "image_url": c.image_url,
+                "duration": "15 mins",
+                "intensity": "High",
+                "notes": "Intervals: 45s Work / 15s Rest",
+                "calories_burned": 200,
+                "instructions": ["All out effort", "Short rest"]
+            })
+            
+        return workout_dict
+
+    # --- STANDARD MODE (Depletion) ---
+    
+    # B. Strength (Compound movements: Legs, Full Body, Chest)
+    strength_candidates = get_exercises_by_experience(db, exp_level)
+    
+    # Filter for Depletion-style target muscles
+    target_muscles = ["Quadriceps", "Hamstrings", "Glutes", "Full Body", "Chest"]
+    depletion_exercises = [
+        ex for ex in strength_candidates 
+        if ex.primary_muscle in target_muscles 
+        and ex.category == "Strength"
+    ]
+    
+    # Sort/Prioritize: We want ~4 exercises. 
+    selected_exercises = []
+    
+    def find_and_add(keywords: List[str], count=1):
+        added = 0
+        for ex in depletion_exercises:
+            if added >= count: break
+            # Check if already added
+            if any(s.id == ex.id for s in selected_exercises): continue
+            
+            # Check keywords
+            if any(k.lower() in ex.name.lower() for k in keywords):
+                selected_exercises.append(ex)
+                added += 1
+                
+    find_and_add(["squat", "leg press"], 1)
+    find_and_add(["lunge", "step up", "split squat"], 1)
+    find_and_add(["push", "press", "chest"], 1)
+    find_and_add(["burpee", "thruster", "swing"], 1)
+    
+    # Fallback if we didn't get enough
+    if len(selected_exercises) < 4:
+        for ex in depletion_exercises:
+            if len(selected_exercises) >= 4: break
+            if not any(s.id == ex.id for s in selected_exercises):
+                selected_exercises.append(ex)
+                
+    # 3. Build Workout Dict
+    workout_dict = {
+        "day_name": day_name,
+        "workout_name": "🔥 FEAST MODE: Glycogen Depletion",
+        "primary_muscle_group": "Legs & Full Body",
+        "focus": "Metabolic Depletion",
+        "session_duration_min": 60,
+        "exercises": [],
+        "cardio_exercises": []
+    }
+    
+    # Format Strength Exercises
+    for ex in selected_exercises:
+        # Higher reps for depletion
+        reps = "15-20"
+        sets = 3
+        if "squat" in ex.name.lower(): 
+            reps = "20-25" # High rep squats
+        
+        workout_dict["exercises"].append({
+            "exercise": ex.name,
+            "image_url": ex.image_url,
+            "target_muscle": ex.primary_muscle,
+            "sets": sets,
+            "reps": reps,
+            "rest_sec": 45, # Short rest
+            "calories_burned": 100, # Approx per set/exercise
+            "instructions": ["Maintain constant tension", "Focus on the burn", "Minimize rest"]
+        })
+        
+    # Format Cardio Exercises (Select 2-3)
+    # HIIT emphasis
+    hiit_candidates = [c for c in cardio_exercises if "sprint" in c.name.lower() or "hiit" in c.name.lower() or "run" in c.name.lower()]
+    if not hiit_candidates:
+        hiit_candidates = cardio_exercises[:2]
+    else:
+        hiit_candidates = hiit_candidates[:2]
+        
+    for c in hiit_candidates:
+        workout_dict["cardio_exercises"].append({
+            "exercise": c.name,
+            "image_url": c.image_url,
+            "duration": "15 mins",
+            "intensity": "High",
+            "notes": "Intervals: 30s Work / 30s Rest",
+            "calories_burned": 150,
+            "instructions": ["Max effort intervals", "Keep heart rate high"]
+        })
+        
+    return workout_dict
 def patch_limit_day_workout(db: Session, user_id: int, event_date: date):
     """
     Patches the user's current workout plan to inject a "Glycogen Depletion" workout 

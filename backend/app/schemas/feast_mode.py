@@ -15,11 +15,31 @@ class FeastActivateRequest(BaseModel):
     total_banked: int
     start_date: date
     workout_boost: bool = True
+    workout_preference: str = "standard"  # standard, cardio, skip
     custom_deduction: Optional[int] = None
 
 class FeastUpdateRequest(BaseModel):
     daily_deduction: Optional[int] = None
     workout_boost: Optional[bool] = None
+
+class FeastPreCheckRequest(BaseModel):
+    start_date: date
+    daily_deduction: int
+    base_calories: Optional[float] = None
+
+class FeastPreCheckResponse(BaseModel):
+    warning: bool
+    message: Optional[str] = None
+    calories_consumed: float
+    remaining_after_deduction: float
+    safe_minimum: float
+
+class FeastDeactivationPreviewResponse(BaseModel):
+    current_daily_calories: float
+    restored_daily_calories: float
+    banked_calories_lost: int
+    workout_status: str
+    event_name: str
 
 # RESPONSES
 class FeastStatusResponse(BaseModel):

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import feastModeService from '../../api/feastModeService';
 import { format, differenceInDays, parseISO } from 'date-fns';
+import FeastProposalCard from '../common/FeastProposalCard';
 
 const FeastActivationCard = ({ onStatusChange }) => {
   const [status, setStatus] = useState(null); // { is_active, config, effective_targets }
@@ -74,7 +75,35 @@ const FeastActivationCard = ({ onStatusChange }) => {
   const handleActivate = async () => {
     if (!proposal) return;
     setLoading(true);
+    setError('');
+
     try {
+      // 1. Pre-Check Mid-Day Activation
+      const todayStr = new Date().toISOString().split('T')[0];
+      if (proposal.start_date === todayStr) {
+          try {
+             const checkResult = await feastModeService.preActivateCheck({
+                 start_date: todayStr,
+                 daily_deduction: proposal.daily_deduction
+             });
+             
+             if (checkResult && checkResult.warning) {
+                 // Use window.confirm for MVP (or custom modal if implemented later)
+                 const confirmed = window.confirm(
+                     `⚠️ Warning: Low Calorie Budget\n\n` + 
+                     `${checkResult.message}\n\n` + 
+                     `Do you want to proceed with activation?`
+                 );
+                 if (!confirmed) {
+                     setLoading(false);
+                     return;
+                 }
+             }
+          } catch (checkErr) {
+              console.warn("Pre-check failed, proceeding anyway", checkErr);
+          }
+      }
+
       await feastModeService.activate(proposal);
       await fetchStatus(); // Refresh to show active state
     } catch (err) {
@@ -84,21 +113,51 @@ const FeastActivationCard = ({ onStatusChange }) => {
   };
 
   const handleCancel = async () => {
-    if (!window.confirm('Are you sure you want to cancel Feast Mode? Banked calories will be lost.')) return;
+    setError('');
     setLoading(true);
-    setError(''); // Clear previous errors
+    
     try {
-      await feastModeService.cancel();
-      // Optimistically update status to inactive to avoid flash/error
-      const inactive = { is_active: false };
-      setStatus(inactive);
-      if (onStatusChange) onStatusChange(inactive);
-      setShowForm(false); // Close form on cancel
-      
-      await fetchStatus();
+        // 1. Get Preview
+        const preview = await feastModeService.deactivatePreview();
+        
+        // 2. Format Confirmation Message
+        const msg = `⚠️ Cancel Feast Mode for "${preview.event_name}"?\n\n` +
+                    `• Target Restored: ${Math.round(preview.restored_daily_calories)} kcal (was ${Math.round(preview.current_daily_calories)})\n` + 
+                    `• Banked Calories Lost: ${preview.banked_calories_lost} kcal\n` + 
+                    `• Workout: ${preview.workout_status}\n\n` + 
+                    `This action cannot be undone.`;
+
+        if (!window.confirm(msg)) {
+            setLoading(false);
+            return;
+        }
+
+        // 3. Proceed to Cancel
+        await feastModeService.cancel();
+        
+        const inactive = { is_active: false };
+        setStatus(inactive);
+        if (onStatusChange) onStatusChange(inactive);
+        setShowForm(false);
+        await fetchStatus();
+        
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to cancel');
-      setLoading(false);
+        console.error(err);
+        // Fallback if preview fails
+        if (window.confirm('Could not load preview. Cancel Feast Mode anyway? All banked progress will be lost.')) {
+             try {
+                 await feastModeService.cancel();
+                 const inactive = { is_active: false };
+                 setStatus(inactive);
+                 if (onStatusChange) onStatusChange(inactive);
+                 setShowForm(false);
+                 await fetchStatus();
+             } catch (cancelErr) {
+                 setError(cancelErr.response?.data?.detail || 'Failed to cancel');
+             }
+        }
+    } finally {
+        setLoading(false);
     }
   };
 
@@ -252,51 +311,12 @@ const FeastActivationCard = ({ onStatusChange }) => {
 
         {/* PROPOSAL STATE */}
         {!status.is_active && proposal && (
-          <div className="space-y-5 animate-fadeIn">
-            <div className="text-center">
-                <div className="inline-block p-2 bg-green-100 text-green-700 rounded-full mb-2">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                </div>
-                <h3 className="text-lg font-bold text-gray-900">Plan Ready!</h3>
-                <p className="text-sm text-gray-500">Here is your strategy for {proposal.event_name}</p>
-            </div>
-
-            <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-3">
-                <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-600">Total Buffer (Banked)</span>
-                    <span className="font-bold text-gray-900">{proposal.total_banked} kcal</span>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-600">Daily Deduction</span>
-                    <span className="font-bold text-red-500">-{proposal.daily_deduction} kcal/day</span>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-600">Duration</span>
-                    <span className="font-medium text-gray-900">{proposal.days_remaining} days</span>
-                </div>
-                <div className="pt-2 border-t border-gray-200">
-                    <p className="text-xs text-gray-500">
-                        *Includes a Glycogen Depletion workout on the morning of the event.
-                    </p>
-                </div>
-            </div>
-
-            <div className="flex gap-3">
-                <button 
-                    onClick={() => setProposal(null)}
-                    className="flex-1 py-2.5 bg-white border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                    Back
-                </button>
-                <button 
-                    onClick={handleActivate}
-                    disabled={loading}
-                    className="flex-[2] py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg shadow-md hover:shadow-lg transition-all"
-                >
-                    {loading ? 'Activating...' : 'Activate Mode'}
-                </button>
-            </div>
-          </div>
+          <FeastProposalCard 
+            proposal={proposal} 
+            onConfirm={handleActivate} 
+            onCancel={() => setProposal(null)} 
+            loading={loading} 
+          />
         )}
       </div>
     </div>

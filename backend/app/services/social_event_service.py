@@ -107,6 +107,17 @@ def get_effective_daily_targets(db: Session, user_id: int, base_targets: dict, c
         
     effective = base_targets.copy()
     
+    # NEW: TRY TO USE MEAL PLAN TARGETS IF AVAILABLE (More Accurate Baseline)
+    # This prevents using `profile.calories` (e.g. 2000) when the plan is actually 1800.
+    from app.models.meal_plan import MealPlan
+    plan = db.query(MealPlan).filter(MealPlan.user_profile_id == UserProfile.id, UserProfile.user_id == user_id).first()
+    if plan and plan.daily_generated_totals:
+        totals = plan.daily_generated_totals
+        if isinstance(totals, dict):
+             effective['calories'] = totals.get('calories', effective['calories'])
+        elif hasattr(totals, 'calories'):
+             effective['calories'] = totals.calories
+
     # Scenario 1: Buffer Phase (Before Event)
     if event.start_date <= current_date < event.event_date:
         deduction = event.daily_deduction

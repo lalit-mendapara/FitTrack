@@ -200,6 +200,41 @@ def get_chat_history(
     
     return [{"role": msg.role, "content": msg.content, "timestamp": msg.created_at} for msg in reversed(history)]
 
+class AddHistoryRequest(BaseModel):
+    session_id: str
+    role: str # user, assistant
+    content: str
+    
+@router.post("/chat/history")
+def add_chat_history(
+    request: AddHistoryRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Manually add a message to the chat history (e.g. for system events/scripts).
+    """
+    # Verify session exists and belongs to user
+    session = db.query(ChatSession).filter(
+        ChatSession.session_id == request.session_id,
+        ChatSession.user_id == current_user.id
+    ).first()
+    
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+        
+    history = ChatHistory(
+        user_id=current_user.id,
+        session_id=request.session_id,
+        role=request.role,
+        content=request.content
+    )
+    db.add(history)
+    session.updated_at = datetime.utcnow()
+    db.commit()
+    
+    return {"message": "History added"}
+
 @router.get("/chat/sessions", response_model=List[SessionSchema])
 def get_chat_sessions(
     db: Session = Depends(get_db),

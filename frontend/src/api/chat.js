@@ -25,6 +25,25 @@ export const getChatHistory = async (sessionId = "default_session") => {
     } catch (error) {
         console.error('Fetch History Error:', error);
         throw error;
+
+
+    }
+};
+
+/**
+ * Manually add a message to the chat history.
+ */
+export const addChatMessage = async (sessionId, role, content) => {
+    try {
+        const response = await api.post('/chat/history', {
+            session_id: sessionId,
+            role,
+            content
+        });
+        return response.data;
+    } catch (error) {
+        console.error('Add History Error:', error);
+        // Don't throw - if saving history fails, flow should continue
     }
 };
 

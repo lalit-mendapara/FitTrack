@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, Date, Float, ForeignKey, DateTime, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Boolean, Date, Float, ForeignKey, DateTime, UniqueConstraint, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database import Base
@@ -19,6 +19,9 @@ class FeastConfig(Base):
     start_date = Column(Date, nullable=False)
     workout_boost_enabled = Column(Boolean, default=True)
     user_selected_deduction = Column(Integer, nullable=True)
+    
+    # Workout Specifics
+    feast_workout_data = Column(JSON, nullable=True)
     
     # Base Profile Snapshots (for restoration)
     base_calories = Column(Float, nullable=False)

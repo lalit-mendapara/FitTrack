@@ -11,7 +11,7 @@ import { getUnreadNotifications, markNotificationRead } from '../../api/notifica
 import { updateTimezone } from '../../api/user_profile';
 import { getActiveSocialEvent } from '../../api/socialEventService';
 import LockOverlay from '../common/LockOverlay';
-import FeastActivationCard from './FeastActivationCard';
+import FeastModeBanner from './FeastModeBanner';
 import { useDietPlan } from '../../hooks/useDietPlan';
 import feastModeService from '../../api/feastModeService';
 
@@ -78,11 +78,8 @@ const DashboardOverview = ({ hasDietPlan, hasWorkoutPlan }) => {
 
     return (
         <div className="space-y-6">
-            {/* Feast Mode Card */}
-            <FeastActivationCard onStatusChange={setFeastStatus} />
-
-            {/* Feast Mode Banner (Legacy/Optional - removed for now to avoid duplication) */}
-            {/* {feastStatus?.is_active && <FeastModeBanner event={feastStatus.config} onUpdate={fetchFeastStatus} />} */}
+            {/* Feast Mode Banner */}
+            {feastStatus?.is_active && <FeastModeBanner event={feastStatus.config} onUpdate={fetchFeastStatus} />}
 
             {/* Notifications Banner */}
             {showNotifications && notifications.length > 0 && (

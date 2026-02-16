@@ -337,16 +337,20 @@ def get_daily_diet_logs(
                 "fat": profile.fat
             }
             
-    # NEW: Apply Feast Mode Logic
+    # NEW: Apply Feast Mode Logic via FeastModeManager
     # This ensures "Remaining" accounts for banking deductions or feast bonuses
-    # Only applies if date is today (logic inside service handles date check relative to event)
     try:
-        effective = get_effective_daily_targets(db, current_user.id, base_targets, date)
+        from app.services.feast_mode_manager import FeastModeManager
+        feast_manager = FeastModeManager(db)
+        effective = feast_manager.get_effective_targets(current_user.id, date)
+        
         if effective:
             calories_target = int(effective.get('calories', calories_target))
+            # Also update base_targets if we want to show modified macros (optional but good)
+            # For now, just calories as per previous logic, but macros would be consistent.
     except Exception as e:
         # Fallback to base target if logic fails
-        # Assuming logger is not available in this scope, or using print for now as acceptable fallback in error case
+        print(f"Feast Mode Calculation Error: {e}")
         pass
     
     meals = db.query(FoodLog).filter(
@@ -406,7 +410,17 @@ def get_daily_workout_logs(
             schedule = plan.weekly_schedule
             
             # Iterate through days (day1, day2...) to find matching day_name
-            for day_key, day_data in schedule.items():
+            current_schedule = plan.weekly_schedule
+            
+            # INJECT FEAST WORKOUT IF ACTIVE (Dynamic Override)
+            try:
+                from app.services.feast_mode_manager import FeastModeManager
+                feast_manager = FeastModeManager(db)
+                current_schedule = feast_manager.inject_feast_workout_into_plan(current_user.id, current_schedule)
+            except Exception as e:
+                print(f"Tracking: Feast Injection Failed: {e}")
+
+            for day_key, day_data in current_schedule.items():
                 if day_data.get("day_name") == day_name:
                     todays_plan = day_data
                     break
@@ -699,7 +713,16 @@ def get_weekly_workout_overview(
     if profile:
         plan = db.query(WorkoutPlan).filter(WorkoutPlan.user_profile_id == profile.id).first()
         if plan and plan.weekly_schedule:
-             for day_data in plan.weekly_schedule.values():
+             # INJECT FEAST WORKOUT IF ACTIVE
+             final_schedule = plan.weekly_schedule
+             try:
+                 from app.services.feast_mode_manager import FeastModeManager
+                 feast_manager = FeastModeManager(db)
+                 final_schedule = feast_manager.inject_feast_workout_into_plan(current_user.id, final_schedule)
+             except Exception as e:
+                 print(f"Weekly Tracking: Feast Injection Failed: {e}")
+
+             for day_data in final_schedule.values():
                  # Sum up calories for all scheduled days
                  # Logic matches get_daily_workout_logs summation
                  day_cals = 0
@@ -750,9 +773,18 @@ def get_weekly_goals(
     if profile:
         plan = db.query(WorkoutPlan).filter(WorkoutPlan.user_profile_id == profile.id).first()
         if plan and plan.weekly_schedule:
+            # INJECT FEAST WORKOUT IF ACTIVE
+            final_schedule = plan.weekly_schedule
+            try:
+                 from app.services.feast_mode_manager import FeastModeManager
+                 feast_manager = FeastModeManager(db)
+                 final_schedule = feast_manager.inject_feast_workout_into_plan(current_user.id, final_schedule)
+            except Exception as e:
+                 print(f"Weekly Goals: Feast Injection Failed: {e}")
+
             # Count scheduled days
             count = 0
-            for day_data in plan.weekly_schedule.values():
+            for day_data in final_schedule.values():
                 is_rest = day_data.get("is_rest", False)
                 # Ensure it actually has exercises
                 has_content = (day_data.get("exercises") and len(day_data.get("exercises")) > 0) or \
@@ -910,6 +942,15 @@ def get_workout_calendar(
     # Day Names in order
     week_days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
     
+    # Check for Active Feast Config (for dynamic injection)
+    from app.models.feast_config import FeastConfig
+    active_feast = db.query(FeastConfig).filter(
+        FeastConfig.user_id == current_user.id,
+        FeastConfig.is_active == True,
+        FeastConfig.event_date >= target_week_start,
+        FeastConfig.event_date <= target_week_end
+    ).first()
+    
     current_d = target_week_start
     for i in range(7):
         day_name = week_days[i]
@@ -917,6 +958,12 @@ def get_workout_calendar(
         
         # Get Template
         template = schedule_map.get(day_name, {})
+        
+        # FEAST MODE INJECTION
+        if active_feast and active_feast.event_date == current_d and active_feast.feast_workout_data:
+            # Override this day with the feast workout
+            if isinstance(active_feast.feast_workout_data, dict):
+                template = active_feast.feast_workout_data
         
         # Get Logs for this specific date
         logged_exercises_set = logs_by_date.get(current_d, set())

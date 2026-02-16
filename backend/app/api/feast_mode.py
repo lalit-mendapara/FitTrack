@@ -10,13 +10,112 @@ from app.schemas.feast_mode import (
     FeastActivateRequest,
     FeastUpdateRequest,
     FeastStatusResponse,
-    FeastOverrideResponse
+    FeastStatusResponse,
+    FeastOverrideResponse,
+    FeastPreCheckRequest,
+    FeastPreCheckResponse,
+    FeastDeactivationPreviewResponse
 )
 
 router = APIRouter(prefix="/feast-mode", tags=["Feast Mode"])
 
 from app.models.user import User
 from app.api.auth import get_current_user
+from app.models.tracking import FoodLog
+from sqlalchemy import func
+
+@router.post("/deactivate-preview", response_model=FeastDeactivationPreviewResponse)
+def deactivate_preview(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Returns preview of what happens if Feast Mode is cancelled.
+    """
+    user_id = current_user.id
+    manager = FeastModeManager(db)
+    preview = manager.get_deactivation_preview(user_id)
+    
+    if not preview or "error" in preview:
+        raise HTTPException(status_code=400, detail=preview.get("error", "No active config"))
+        
+    return preview
+
+@router.post("/pre-activate-check", response_model=FeastPreCheckResponse)
+def pre_activate_check(
+    request: FeastPreCheckRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Checks if activating Feast Mode today would result in dangerously low remaining calories.
+    """
+    today = date.today()
+    
+    # Only relevant if start_date matches today
+    if request.start_date != today:
+        return FeastPreCheckResponse(
+            warning=False,
+            calories_consumed=0,
+            remaining_after_deduction=2000, # Dummy, not used
+            safe_minimum=0
+        )
+        
+    # 1. Calculate Consumed Calories Today
+    logs = db.query(FoodLog).filter(
+        FoodLog.user_id == current_user.id,
+        FoodLog.date == today
+    ).all()
+    
+    consumed = sum(l.calories for l in logs) if logs else 0
+    
+    # 2. Determine Base Stats
+    base = request.base_calories
+    if not base:
+        # Fetch from Manager logic (which checks Meal Plan first)
+        manager = FeastModeManager(db)
+        # We can use get_effective_targets but that needs an ACTIVE config.
+        # So we replicate the "Pre-Activation" logic
+        from app.models.user_profile import UserProfile
+        from app.models.meal_plan import MealPlan
+        
+        profile = db.query(UserProfile).filter(UserProfile.user_id == current_user.id).first()
+        base = profile.calories if profile else 2000
+        
+        plan = db.query(MealPlan).filter(MealPlan.user_profile_id == profile.id).first() if profile else None
+        if plan and plan.daily_generated_totals:
+             totals = plan.daily_generated_totals
+             if isinstance(totals, dict):
+                 base = totals.get("calories", base)
+             elif hasattr(totals, "calories"):
+                 base = totals.calories
+                 
+    # 3. Calculate Remaining if Activated
+    effective_target = base - request.daily_deduction
+    remaining = effective_target - consumed
+    
+    # 4. Determine Warning
+    SAFE_MINIMUM = 500  # Minimum calories allowed for remaining part of day? 
+    # Or should we check total daily minimum?
+    # Let's say: If remaining is < 200, user will starve.
+    
+    warning = False
+    msg = None
+    
+    if remaining < 200:
+        warning = True
+        msg = f"Warning: You have already eaten {int(consumed)} kcal. Activating now would leave you with only {int(remaining)} kcal for the rest of the day!"
+    elif remaining < 0:
+        warning = True
+        msg = f"Critical: You have already exceeded the target! Activating involves a deficit of {int(abs(remaining))} kcal."
+        
+    return FeastPreCheckResponse(
+        warning=warning,
+        message=msg,
+        calories_consumed=consumed,
+        remaining_after_deduction=remaining,
+        safe_minimum=200
+    )
 
 # ... (router definition)
 
@@ -91,7 +190,12 @@ def activate_feast(
     }
     
     try:
-        config = manager.activate(user_id, proposal, request.workout_boost)
+        config = manager.activate(
+            user_id, 
+            proposal, 
+            request.workout_boost,
+            workout_preference=request.workout_preference
+        )
         return {"message": "Feast Mode activated", "config_id": config.id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

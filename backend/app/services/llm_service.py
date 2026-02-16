@@ -66,9 +66,9 @@ def get_llm(temperature: float = 0.7, max_tokens: int = 2000, json_mode: bool = 
     if LLM_PROVIDER == "ollama":
         # CRITICAL FIX: Ensure we don't accidentally connect to cloud if API key is present
         # Local Ollama does NOT need an API key. 
-        if "OLLAMA_API_KEY" in os.environ:
-             print(f"[LLM Service] Note: OLLAMA_API_KEY found but using local provider. Unsetting to prevent conflicts.")
-             del os.environ["OLLAMA_API_KEY"]
+        # if "OLLAMA_API_KEY" in os.environ:
+        #      print(f"[LLM Service] Note: OLLAMA_API_KEY found but using local provider. Unsetting to prevent conflicts.")
+        #      del os.environ["OLLAMA_API_KEY"]
 
         format_val = "json" if json_mode else ""
         
@@ -460,6 +460,7 @@ def _parse_json_from_text(text: str) -> Optional[Dict]:
         return json.loads(cleaned_text)
     except json.JSONDecodeError as e:
         print(f"[LLM Service] Initial JSON parse failed: {e}")
+        print(f"[LLM Service] Failed Content (First 500 chars): {cleaned_text[:500]}")
         print(f"[LLM Service] Attempting JSON repair...")
     
     # Repair Strategies (Simplified from original for brevity, but kept logic)

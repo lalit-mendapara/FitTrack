@@ -217,7 +217,7 @@ curl http://localhost:8000/health
 
 ### Docker Reset & Database Restoration
 
-If you need to completely reset your Docker environment and restore data from `backup.sql`, follow these manual steps.
+If you need to completely reset your Docker environment and restore data from `backup.sql`, or if you are setting up on a new device using a backup, follow these steps.
 
 #### 1. Remove Existing Containers & Volumes
 This **completely wipes** your Docker database to ensure a clean restore.
@@ -250,6 +250,12 @@ docker exec -it diet_planner_db psql -U lalit -d fitness_track -f /backup.sql
 Now that the data is restored, start the backend and other services.
 ```bash
 docker-compose --env-file .env.docker up -d
+```
+
+#### 6. Run Database Migrations
+**Critical Step:** Ensure your restored database schema matches the current code versions.
+```bash
+docker exec -it diet_planner_backend alembic upgrade head
 ```
 
 ### Creating a New Backup

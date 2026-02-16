@@ -1,6 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Send, Bot, User, Loader2, History, Plus, MessageSquare, Copy, Check, MoreVertical, Pencil, Trash2, X } from 'lucide-react';
-import { chatWithCoach, getChatHistory, getChatSessions, deleteSession, renameSession } from '../api/chat';
+import { chatWithCoach, getChatHistory, getChatSessions, deleteSession, renameSession, addChatMessage } from '../api/chat';
+import { feastModeService } from '../api/feastModeService';
+import FeastSetupCard from '../components/chat/FeastSetupCard';
+import FeastProposalCard from '../components/common/FeastProposalCard';
+import FeastDeactivePreviewCard from '../components/chat/FeastDeactivePreviewCard';
 import { toast } from 'react-toastify';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -9,6 +14,7 @@ import { useAuth } from '../context/AuthContext';
 
 const AICoach = () => {
     const { user } = useAuth();
+    const navigate = useNavigate();
     const firstName = user?.name ? user.name.split(' ')[0] : 'there';
     
     // Core State
@@ -19,6 +25,10 @@ const AICoach = () => {
     const [messages, setMessages] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
     
+    // Feast Mode State
+    const [feastStatus, setFeastStatus] = useState(null); // { is_active: boolean, ... }
+    const [feastLoading, setFeastLoading] = useState(false);
+
     // History State
     const [showHistory, setShowHistory] = useState(false);
     const [sessions, setSessions] = useState([]);
@@ -53,12 +63,22 @@ const AICoach = () => {
         if (messages.length === 0) {
             loadCurrentSessionHistory();
         }
+        checkFeastStatus();
     }, []);
 
     useEffect(() => {
         scrollToBottom();
         setTimeout(() => inputRef.current?.focus(), 100);
     }, [messages]);
+
+    const checkFeastStatus = async () => {
+        try {
+            const status = await feastModeService.getStatus();
+            setFeastStatus(status);
+        } catch (error) {
+            console.error("Failed to check feast status", error);
+        }
+    };
 
     const formatTime = (dateString) => {
         if (!dateString) return '';
@@ -103,12 +123,132 @@ const AICoach = () => {
         }
     };
 
-    const handleSend = async (e) => {
-        e?.preventDefault();
-        if (!input.trim() || isLoading) return;
+    // --- FEAST MODE HANDLERS ---
 
-        const userMsg = input.trim();
-        setInput('');
+    const startFeastActivation = () => {
+        // Add User Message
+        const userText = "I want to activate Feast Mode";
+        setMessages(prev => [...prev, { type: 'user', text: userText, timestamp: new Date().toISOString() }]);
+        addChatMessage(sessionId, 'user', userText);
+
+        // Add AI Message with Setup Card
+        setTimeout(() => {
+            const aiText = "Great! Let's get that set up. When is your big event?";
+            setMessages(prev => [...prev, { 
+                type: 'ai', 
+                text: aiText,
+                timestamp: new Date().toISOString(),
+                customContent: { type: 'feast_setup' }
+            }]);
+            addChatMessage(sessionId, 'assistant', aiText); // We can't save customContent perfectly yet, but saving text helps context
+        }, 500);
+    };
+
+    const startFeastDeactivation = async () => {
+        const userText = "I want to deactivate Feast Mode";
+        setMessages(prev => [...prev, { type: 'user', text: userText, timestamp: new Date().toISOString() }]);
+        addChatMessage(sessionId, 'user', userText);
+        setIsLoading(true);
+
+        try {
+            const preview = await feastModeService.getDeactivationPreview();
+            const aiText = "Here is what will happen if you cancel Feast Mode now:";
+            setMessages(prev => [...prev, { 
+                type: 'ai', 
+                text: aiText,
+                timestamp: new Date().toISOString(),
+                customContent: { type: 'feast_deactivate_preview', data: preview }
+            }]);
+             // We persist the text part so history makes sense
+            addChatMessage(sessionId, 'assistant', aiText);
+        } catch (error) {
+            setMessages(prev => [...prev, { 
+                type: 'ai', 
+                text: "I couldn't fetch the deactivation details. Please try again.",
+                timestamp: new Date().toISOString()
+            }]);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleFeastProposal = async ({ eventName, eventDate }) => {
+        setFeastLoading(true);
+        try {
+            const proposal = await feastModeService.proposeStrategy(eventName, eventDate);
+            setMessages(prev => [...prev, { 
+                type: 'ai', 
+                text: `I've calculated a strategy for ${eventName}. Check it out:`,
+                timestamp: new Date().toISOString(),
+                customContent: { type: 'feast_proposal', data: proposal }
+            }]);
+        } catch (error) {
+            toast.error(error.response?.data?.detail || "Failed to propose strategy");
+            setMessages(prev => [...prev, { 
+                type: 'ai', 
+                text: "Sorry, I couldn't generate a proposal. Please check the date and try again.",
+                timestamp: new Date().toISOString()
+            }]);
+        } finally {
+            setFeastLoading(false);
+        }
+    };
+
+    const handleActivateFeast = async (proposalData) => {
+        setFeastLoading(true);
+        try {
+            await feastModeService.activate(proposalData, true);
+            
+            // Success Message
+            const successText = `🎉 **Feast Mode Activated!**`;
+            setMessages(prev => [...prev, { 
+                type: 'ai', 
+                text: successText,
+            }]);
+            addChatMessage(sessionId, 'assistant', successText);
+            
+            // Refresh Status
+            await checkFeastStatus();
+            
+        } catch (error) {
+           toast.error("Failed to activate");
+        } finally {
+            setFeastLoading(false);
+        }
+    };
+
+    const handleCancelFeast = async () => {
+        setFeastLoading(true);
+        try {
+            await feastModeService.cancel();
+            const cancelText = "Feast Mode has been cancelled. Your original plan is restored.";
+            setMessages(prev => [...prev, { 
+                type: 'ai', 
+                text: cancelText,
+                timestamp: new Date().toISOString()
+            }]);
+            addChatMessage(sessionId, 'assistant', cancelText);
+            await checkFeastStatus();
+        } catch (error) {
+            toast.error("Failed to cancel");
+        } finally {
+            setFeastLoading(false);
+        }
+    };
+
+    const cancelInteraction = () => {
+        setMessages(prev => [...prev, { type: 'ai', text: "Okay, cancelled.", timestamp: new Date().toISOString() }]);
+    };
+
+    const handleSend = async (e, manualText = null) => {
+        e?.preventDefault();
+        
+        const userMsg = manualText || input.trim();
+        if (!userMsg || isLoading) return;
+
+        if (!manualText) {
+            setInput('');
+        }
         
         // Add user message immediately
         const userMessageObj = { 
@@ -118,6 +258,25 @@ const AICoach = () => {
         };
         setMessages(prev => [...prev, userMessageObj]);
         setIsLoading(true);
+
+        // Intercept text commands for Feast Mode
+        if (userMsg.toLowerCase().includes('activate feast mode')) {
+            setIsLoading(false);
+            addChatMessage(sessionId, 'user', userMsg); // Save the trigger message
+            
+            // Wait a tick to allow state update
+            setTimeout(() => {
+                 const aiText = "Great! Let's get that set up. When is your big event?";
+                 setMessages(prev => [...prev, { 
+                    type: 'ai', 
+                    text: aiText,
+                    timestamp: new Date().toISOString(),
+                    customContent: { type: 'feast_setup' }
+                }]);
+                addChatMessage(sessionId, 'assistant', aiText);
+            }, 100);
+            return;
+        }
 
         try {
             const data = await chatWithCoach(userMsg, sessionId);
@@ -455,7 +614,33 @@ const AICoach = () => {
                                             ? 'bg-white border border-gray-200 text-gray-800'
                                             : 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white'
                                     }`}>
-                                        {msg.type === 'ai' ? (
+                                        {msg.customContent ? (
+                                            <>
+                                                <p className="mb-3">{msg.text}</p>
+                                                {msg.customContent.type === 'feast_setup' && (
+                                                    <FeastSetupCard 
+                                                        onSubmit={handleFeastProposal} 
+                                                        onCancel={cancelInteraction} 
+                                                    />
+                                                )}
+                                                {msg.customContent.type === 'feast_proposal' && (
+                                                    <FeastProposalCard 
+                                                        proposal={msg.customContent.data}
+                                                        onConfirm={handleActivateFeast}
+                                                        onCancel={cancelInteraction}
+                                                        loading={feastLoading}
+                                                    />
+                                                )}
+                                                {msg.customContent.type === 'feast_deactivate_preview' && (
+                                                    <FeastDeactivePreviewCard
+                                                        preview={msg.customContent.data}
+                                                        onConfirm={handleCancelFeast}
+                                                        onCancel={cancelInteraction}
+                                                        loading={feastLoading}
+                                                    />
+                                                )}
+                                            </>
+                                        ) : msg.type === 'ai' ? (
                                             <>
                                                 <div className="prose prose-sm max-w-none prose-headings:text-gray-900 prose-p:text-gray-800 prose-li:text-gray-800 prose-strong:text-gray-900">
                                                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -503,6 +688,31 @@ const AICoach = () => {
                                 </div>
                             </div>
                         )}
+                    </div>
+                    
+                    {/* Quick Actions / FAQ Chips */}
+                    <div className="px-6 py-2 flex gap-2 overflow-x-auto no-scrollbar bg-white border-t border-gray-100">
+                         {feastStatus ? (
+                             <button 
+                                onClick={startFeastDeactivation}
+                                className="whitespace-nowrap px-3 py-1.5 bg-red-50 text-red-700 text-xs font-semibold rounded-full hover:bg-red-100 transition-colors border border-red-100"
+                             >
+                                ⛔ Cancel Feast Mode
+                             </button>
+                         ) : (
+                             <button 
+                                onClick={startFeastActivation}
+                                className="whitespace-nowrap px-3 py-1.5 bg-purple-50 text-purple-700 text-xs font-semibold rounded-full hover:bg-purple-100 transition-colors border border-purple-100"
+                             >
+                                🎉 Feast Mode
+                             </button>
+                         )}
+                         <button 
+                            onClick={() => handleSend(null, "What should I eat today?")}
+                            className="whitespace-nowrap px-3 py-1.5 bg-indigo-50 text-indigo-700 text-xs font-semibold rounded-full hover:bg-indigo-100 transition-colors border border-indigo-100"
+                         >
+                            📅 Today's Plan
+                         </button>
                     </div>
 
                     {/* Input Area */}

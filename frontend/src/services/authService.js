@@ -25,5 +25,13 @@ export const logoutUser = async () => {
 
 export const verifySession = async () => {
     const response = await api.get('/users/me');
-    return response.data; // Helper to check if token is valid
+    return response.data; // Helper to check if user is logged in
+};
+
+export const getAuthHeader = () => {
+    const token = localStorage.getItem('access_token');
+    if (token) {
+        return { Authorization: `Bearer ${token}` };
+    }
+    return {};
 };
