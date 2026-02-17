@@ -8,6 +8,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine,Base
 import app.models
 from app.api import users,user_profile,meal_plan,login,workout_plan,workout_preferences,chat,tracking
+import logging
+
+# Configure Logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[logging.StreamHandler()]
+)
+
 
 print(engine.url)
 

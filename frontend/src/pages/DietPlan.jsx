@@ -316,9 +316,9 @@ const DietPlan = ({ isEmbedded = false }) => {
       )}
 
       {/* Feast Mode Banner */}
-      {feastStatus?.is_active && (
+      {feastStatus && (
         <FeastModeBanner 
-          event={feastStatus.config} 
+          event={feastStatus} 
           onUpdate={() => {
             feastModeService.getStatus().then(status => setFeastStatus(status));
             refreshPlan();
@@ -335,15 +335,15 @@ const DietPlan = ({ isEmbedded = false }) => {
                   <h1 className="text-3xl font-black text-gray-900 tracking-tight mb-1">
                     Your Daily <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-indigo-400">Nutrition</span>
                   </h1>
-                  {feastStatus?.is_active && feastStatus.config?.status === 'BANKING' ? (
+                  {feastStatus && feastStatus.status === 'BANKING' ? (
                     <p className="text-sm font-semibold text-purple-600 mt-1 flex items-center gap-1.5 flex-wrap">
-                      Banking {Math.round(feastStatus.config.daily_deduction)} kcal/day for <span className="font-black">{feastStatus.config.event_name}</span>
+                      Banking {Math.round(feastStatus.daily_deduction)} kcal/day for <span className="font-black">{feastStatus.event_name}</span>
                       <span className="text-gray-400 mx-1">•</span>
                       Today's target: {plan ? Math.round(plan.daily_generated_totals?.calories || 0) : '—'} kcal
                     </p>
-                  ) : feastStatus?.is_active && feastStatus.config?.status === 'FEAST_DAY' ? (
+                  ) : feastStatus && feastStatus.status === 'FEAST_DAY' ? (
                     <p className="text-sm font-semibold text-amber-600 mt-1 flex items-center gap-1.5 flex-wrap">
-                      Feast Day: +{feastStatus.config.target_bank_calories} kcal bonus for <span className="font-black">{feastStatus.config.event_name}</span>
+                      Feast Day: +{feastStatus.target_bank_calories} kcal bonus for <span className="font-black">{feastStatus.event_name}</span>
                     </p>
                   ) : (
                     <p className="text-sm text-gray-500 font-medium max-w-sm mx-auto lg:mx-0">
@@ -510,7 +510,7 @@ const DietPlan = ({ isEmbedded = false }) => {
                         meal={meal} 
                         loggedMeals={loggedMeals}
                         onLogUpdate={fetchLogs}
-                        socialEvent={feastStatus?.config}
+                        socialEvent={feastStatus}
                         onPlanRefresh={refreshPlan}
                      />
                   ))}

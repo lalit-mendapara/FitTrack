@@ -59,7 +59,8 @@ const ExerciseCard = ({ exercise, initialLogId = null, targetDate = null, onLogU
             if (onLogUpdate) onLogUpdate();
             
         } catch (e) {
-            toast.error("Failed to update log.");
+            const msg = e?.response?.data?.detail || "Failed to update log.";
+            toast.error(msg);
         }
   };
 

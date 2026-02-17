@@ -10,6 +10,8 @@ import GenerationOverlay from '../components/layout/GenerationOverlay';
 import WorkoutSessionModal from '../components/workout/WorkoutSessionModal';
 import { logWorkoutSession, deleteDailyWorkoutLogs, getDailyWorkoutLogs, deleteAllWorkoutLogs, checkWorkoutHistory } from '../api/tracking';
 import { toast } from 'react-toastify';
+import feastModeService from '../api/feastModeService';
+import FeastModeBanner from '../components/dashboard/FeastModeBanner';
 
 
 
@@ -29,6 +31,13 @@ const WorkoutPlan = ({ isEmbedded = false }) => {
   const [loggedWorkouts, setLoggedWorkouts] = useState([]);
   const [hasSession, setHasSession] = useState(false);
   const [showConflictModal, setShowConflictModal] = useState(false);
+
+  // Feast Mode State
+  const [feastStatus, setFeastStatus] = useState(null);
+
+  React.useEffect(() => {
+    feastModeService.getStatus().then(status => setFeastStatus(status));
+  }, []);
 
   const onGenerateStart = () => {
     setShowGenerationModal(true);
@@ -254,7 +263,8 @@ const WorkoutPlan = ({ isEmbedded = false }) => {
           // Optional: Navigate back or show summary?
           handleBack(); 
       } catch (error) {
-          toast.error("Failed to save session.");
+          const msg = error?.response?.data?.detail || "Failed to save session.";
+          toast.error(msg);
       } finally {
           setIsSavingSession(false);
       }
@@ -330,6 +340,17 @@ const WorkoutPlan = ({ isEmbedded = false }) => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Feast Mode Banner */}
+      {feastStatus && (
+        <FeastModeBanner 
+          event={feastStatus} 
+          onUpdate={() => {
+            feastModeService.getStatus().then(status => setFeastStatus(status));
+            window.location.reload(); 
+          }} 
+        />
       )}
 
       {/* Hero / Header Section */}

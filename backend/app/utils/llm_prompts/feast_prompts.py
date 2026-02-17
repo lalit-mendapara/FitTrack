@@ -11,12 +11,14 @@ RULES:
 4. FAT IS SECONDARY: After carbs, adjust fat content slightly if needed.
 5. KEEP DISH NAMES: Never change the dish itself, only adjust portion sizes and nutrients.
 6. PROVIDE NOTES: For each adjusted meal, provide a short human-readable note explaining the change (e.g., "Reduced portion to save calories").
+7. RESPECT SELECTED MEALS: Only adjust meals in the selected_meals list. Other meals must remain exactly as they are.
 
 Respond in JSON format:
 {
   "adjusted_meals": [
     {
       "meal_id": "breakfast",
+      "calories": 350,
       "portion_size": "updated portion string",
       "protein": 25.0,
       "carbs": 40.0,

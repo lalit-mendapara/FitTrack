@@ -3,7 +3,7 @@ import { Sun, Calendar, Moon, Coffee, Apple, CheckCircle, RotateCcw, ChevronDown
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from 'recharts';
 import { toast } from 'react-toastify';
 import { logMeal, deleteMealLog } from '../../api/tracking';
-import { skipMeal } from '../../api/socialEventService';
+
 
 const COLORS = ['#818cf8', '#34d399', '#f472b6']; // Indigo, Emerald, Pink
 
@@ -118,30 +118,7 @@ const MealCard = ({ meal, loggedMeals, onLogUpdate, socialEvent, onPlanRefresh }
         }
     };
 
-    const [skipping, setSkipping] = useState(false);
-    
-    const handleSkipMeal = async (e) => {
-        e.stopPropagation();
-        const isFeastDay = socialEvent?.status === 'FEAST_DAY';
-        const confirmMsg = isFeastDay
-            ? `Skip ${meal.label}? Its calories will be redistributed to your other meals.`
-            : `Skip ${meal.label}? Its calories will be banked for your feast day.`;
-        if (!window.confirm(confirmMsg)) return;
-        
-        setSkipping(true);
-        try {
-            await skipMeal(meal.meal_id, null, isFeastDay);
-            toast.success(isFeastDay
-                ? `Skipped ${meal.label}! Calories redistributed.`
-                : `Skipped ${meal.label}! Calories banked 🏦`
-            );
-            if (onPlanRefresh) onPlanRefresh();
-        } catch (err) {
-            toast.error('Failed to skip meal.');
-        } finally {
-            setSkipping(false);
-        }
-    };
+
     
     return (
       <div className="bg-white rounded-[2rem] shadow-lg border border-gray-100/50 overflow-hidden hover:shadow-2xl hover:border-indigo-100 transition-all duration-300 group h-full flex flex-col">
@@ -227,8 +204,15 @@ const MealCard = ({ meal, loggedMeals, onLogUpdate, socialEvent, onPlanRefresh }
 
           {/* Adjustment Note */}
           {meal.is_user_adjusted && meal.adjustment_note && (
-             <div className="mb-4 px-3 py-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 text-xs font-semibold">
-               ✏️ {meal.adjustment_note}
+             <div className={`mb-4 px-3 py-2 rounded-xl border text-xs font-semibold ${
+                 meal.adjustment_note.toLowerCase().includes('removed') || 
+                 meal.adjustment_note.toLowerCase().includes('reduced') || 
+                 meal.adjustment_note.toLowerCase().includes('auto-scaled') ||
+                 meal.adjustment_note.toLowerCase().includes('skipped') 
+                 ? 'border-red-200 bg-red-50 text-red-700'
+                 : 'border-blue-200 bg-blue-50 text-blue-700'
+             }`}>
+               {meal.adjustment_note.toLowerCase().includes('removed') || meal.adjustment_note.toLowerCase().includes('skipped') ? '⚠️ ' : '✏️ '} {meal.adjustment_note}
              </div>
           )}
 
@@ -334,17 +318,7 @@ const MealCard = ({ meal, loggedMeals, onLogUpdate, socialEvent, onPlanRefresh }
                  )}
              </button>
              
-             {socialEvent && !logId && meal.portion_size !== 'SKIPPED' && (
-               <button
-                 onClick={handleSkipMeal}
-                 disabled={skipping}
-                 className="px-4 py-2 font-bold rounded-xl flex items-center justify-center gap-2 transition-colors bg-gray-50 text-gray-500 hover:bg-orange-50 hover:text-orange-600 border border-gray-200 hover:border-orange-200 disabled:opacity-50"
-                 title="Skip this meal and redistribute calories"
-               >
-                 <SkipForward size={18} />
-                 {skipping ? '...' : 'Skip'}
-               </button>
-             )}
+
           </div>
 
         </div>

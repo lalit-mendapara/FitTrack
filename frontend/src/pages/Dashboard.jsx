@@ -14,6 +14,7 @@ import AICoach from './AICoach';
 import MobileBottomNav from '../components/layout/MobileBottomNav';
 import logo from '../images/Frame 13 2 (2).png';
 import { debounce } from '../utils/debounce';
+import { Home, Utensils, Dumbbell, Bot } from 'lucide-react';
 
 const Dashboard = () => {
     const { user, logout } = useAuth();
@@ -167,21 +168,25 @@ const Dashboard = () => {
         { 
             id: 'dashboard-overview', 
             label: 'Dashboard',
+            icon: Home,
             locked: !hasDietPlan && !hasWorkoutPlan && !loadingProfile
         },
         { 
             id: 'diet-plan', 
             label: 'Diet Plan',
+            icon: Utensils,
             locked: !hasPhysicalProfile && !loadingProfile 
         },
         { 
             id: 'workout-plan', 
             label: 'Workout Plan',
+            icon: Dumbbell,
             locked: (!hasPhysicalProfile || !hasWorkoutPreferences) && !loadingProfile 
         },
         { 
             id: 'ai-coach', 
             label: 'AI Coach',
+            icon: Bot,
             locked: !hasDietPlan && !hasWorkoutPlan && !loadingProfile
         },
     ];
@@ -253,7 +258,10 @@ const Dashboard = () => {
                                     : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                             } ${item.locked ? 'opacity-50 cursor-not-allowed hover:bg-transparent' : ''}`}
                         >
-                            <span>{item.label}</span>
+                            <div className="flex items-center gap-3">
+                                <item.icon size={20} className={activeSection === item.id ? 'text-indigo-600' : 'text-gray-400'} />
+                                <span>{item.label}</span>
+                            </div>
                             {item.locked && (
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />

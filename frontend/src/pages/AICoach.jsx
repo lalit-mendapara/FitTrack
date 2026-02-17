@@ -11,9 +11,13 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { v4 as uuidv4 } from 'uuid';
 import { useAuth } from '../context/AuthContext';
+import feastLogo from '../images/Feast-logo98_png586.png';
+
+import { useDietPlan } from '../hooks/useDietPlan';
 
 const AICoach = () => {
     const { user } = useAuth();
+    const { plan } = useDietPlan(); // Access current diet plan
     const navigate = useNavigate();
     const firstName = user?.name ? user.name.split(' ')[0] : 'there';
     
@@ -172,10 +176,10 @@ const AICoach = () => {
         }
     };
 
-    const handleFeastProposal = async ({ eventName, eventDate }) => {
+    const handleFeastProposal = async ({ eventName, eventDate, selectedMeals }) => {
         setFeastLoading(true);
         try {
-            const proposal = await feastModeService.proposeStrategy(eventName, eventDate);
+            const proposal = await feastModeService.proposeStrategy(eventName, eventDate, null, selectedMeals);
             setMessages(prev => [...prev, { 
                 type: 'ai', 
                 text: `I've calculated a strategy for ${eventName}. Check it out:`,
@@ -621,6 +625,7 @@ const AICoach = () => {
                                                     <FeastSetupCard 
                                                         onSubmit={handleFeastProposal} 
                                                         onCancel={cancelInteraction} 
+                                                        dietPlan={plan}
                                                     />
                                                 )}
                                                 {msg.customContent.type === 'feast_proposal' && (
@@ -695,16 +700,18 @@ const AICoach = () => {
                          {feastStatus ? (
                              <button 
                                 onClick={startFeastDeactivation}
-                                className="whitespace-nowrap px-3 py-1.5 bg-red-50 text-red-700 text-xs font-semibold rounded-full hover:bg-red-100 transition-colors border border-red-100"
+                                className="whitespace-nowrap px-3 py-1.5 bg-red-50 text-red-700 text-xs font-semibold rounded-full hover:bg-red-100 transition-colors border border-red-100 inline-flex items-center gap-1.5"
                              >
-                                ⛔ Cancel Feast Mode
+                                <img src={feastLogo} alt="Feast Mode" className="h-4 w-4 object-contain" />
+                                Cancel Feast Mode
                              </button>
                          ) : (
                              <button 
                                 onClick={startFeastActivation}
-                                className="whitespace-nowrap px-3 py-1.5 bg-purple-50 text-purple-700 text-xs font-semibold rounded-full hover:bg-purple-100 transition-colors border border-purple-100"
+                                className="whitespace-nowrap px-3 py-1.5 bg-purple-50 text-purple-700 text-xs font-semibold rounded-full hover:bg-purple-100 transition-colors border border-purple-100 inline-flex items-center gap-1.5"
                              >
-                                🎉 Feast Mode
+                                <img src={feastLogo} alt="Feast Mode" className="h-4 w-4 object-contain" />
+                                Feast Mode
                              </button>
                          )}
                          <button 

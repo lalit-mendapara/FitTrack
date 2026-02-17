@@ -4,6 +4,38 @@ import { AlertCircle, ArrowRight, Activity, Flame } from 'lucide-react';
 const FeastDeactivePreviewCard = ({ preview, onConfirm, onCancel, loading }) => {
   if (!preview) return null;
 
+  // Helper to extract meals from snapshot
+  const getRestoredMeals = () => {
+      if (!preview.original_diet_snapshot?.meal_plan) return [];
+      const plan = preview.original_diet_snapshot.meal_plan;
+      
+      // If plan is an array (new format)
+      if (Array.isArray(plan)) {
+          return plan.map(m => {
+              const n = m.nutrients || {};
+              const cals = Math.round((Number(n.p||0)*4) + (Number(n.c||0)*4) + (Number(n.f||0)*9));
+              return { 
+                  name: m.label || m.meal_id || 'Meal', 
+                  cals 
+              };
+          });
+      }
+      
+      // Legacy object format
+      const meals = [];
+      ['breakfast', 'lunch', 'dinner', 'snack', 'snacks'].forEach(key => {
+          if (plan[key]) {
+              const m = plan[key];
+              const n = m.nutrients || {};
+              const cals = Math.round((Number(n.p||0)*4) + (Number(n.c||0)*4) + (Number(n.f||0)*9));
+              meals.push({ name: key.charAt(0).toUpperCase() + key.slice(1), cals });
+          }
+      });
+      return meals;
+  };
+
+  const restoredMeals = getRestoredMeals();
+
   return (
     <div className="bg-white p-5 rounded-xl border border-red-100 shadow-sm animate-in fade-in slide-in-from-bottom-2 space-y-4 max-w-sm w-full">
       <div className="flex items-center gap-3 border-b border-red-50 pb-3">
@@ -33,6 +65,21 @@ const FeastDeactivePreviewCard = ({ preview, onConfirm, onCancel, loading }) => 
              </div>
          )}
       </div>
+
+      {/* Meal Breakdown */}
+      {restoredMeals.length > 0 && (
+          <div className="border-t border-b border-gray-100 py-2">
+              <p className="text-xs font-semibold text-gray-500 mb-2">Restoring Meals:</p>
+              <div className="space-y-1 max-h-32 overflow-y-auto pr-1 custom-scrollbar">
+                  {restoredMeals.map((meal, idx) => (
+                      <div key={idx} className="flex justify-between text-xs">
+                          <span className="text-gray-700">{meal.name}</span>
+                          <span className="text-gray-900 font-medium">{meal.cals} kcal</span>
+                      </div>
+                  ))}
+              </div>
+          </div>
+      )}
 
       <div className="p-3 bg-blue-50 text-blue-800 text-xs rounded-lg border border-blue-100 flex items-start gap-2">
           <div className="mt-0.5"><Activity size={14} /></div>

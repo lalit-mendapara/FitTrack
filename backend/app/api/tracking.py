@@ -70,6 +70,14 @@ def get_user_local_time(user: User):
     return user_now.replace(tzinfo=None)
 
 
+def _future_log_block_message(current_date: DateType, attempted_date: DateType) -> str:
+    return (
+        f"You cannot log exercises for future dates. "
+        f"Current date: {current_date.isoformat()}. "
+        f"Selected date: {attempted_date.isoformat()}."
+    )
+
+
 # --- Endpoints ---
 
 @router.post("/log-meal", status_code=status.HTTP_201_CREATED)
@@ -126,6 +134,14 @@ def log_workout(
         final_date = request.date
         final_created_at = request.created_at
 
+    # Block future-date exercise logging (user local date)
+    user_local_today = get_user_local_time(current_user).date()
+    if final_date > user_local_today:
+        raise HTTPException(
+            status_code=400,
+            detail=_future_log_block_message(user_local_today, final_date)
+        )
+
     new_log = WorkoutLog(
         user_id=current_user.id,
         date=final_date,
@@ -161,6 +177,14 @@ def log_workout_session(
         final_date = local_now.date()
     else:
         final_date = request.date
+
+    # Block future-date workout session logging (user local date)
+    user_local_today = get_user_local_time(current_user).date()
+    if final_date > user_local_today:
+        raise HTTPException(
+            status_code=400,
+            detail=_future_log_block_message(user_local_today, final_date)
+        )
 
     # Check if session exists for this date
     existing_session = db.query(WorkoutSession).filter(
@@ -416,7 +440,7 @@ def get_daily_workout_logs(
             try:
                 from app.services.feast_mode_manager import FeastModeManager
                 feast_manager = FeastModeManager(db)
-                current_schedule = feast_manager.inject_feast_workout_into_plan(current_user.id, current_schedule)
+                current_schedule = feast_manager.inject_feast_workout_into_plan(current_user.id, current_schedule, reference_date=date)
             except Exception as e:
                 print(f"Tracking: Feast Injection Failed: {e}")
 
@@ -718,7 +742,7 @@ def get_weekly_workout_overview(
              try:
                  from app.services.feast_mode_manager import FeastModeManager
                  feast_manager = FeastModeManager(db)
-                 final_schedule = feast_manager.inject_feast_workout_into_plan(current_user.id, final_schedule)
+                 final_schedule = feast_manager.inject_feast_workout_into_plan(current_user.id, final_schedule, reference_date=start_of_week)
              except Exception as e:
                  print(f"Weekly Tracking: Feast Injection Failed: {e}")
 
@@ -778,7 +802,7 @@ def get_weekly_goals(
             try:
                  from app.services.feast_mode_manager import FeastModeManager
                  feast_manager = FeastModeManager(db)
-                 final_schedule = feast_manager.inject_feast_workout_into_plan(current_user.id, final_schedule)
+                 final_schedule = feast_manager.inject_feast_workout_into_plan(current_user.id, final_schedule, reference_date=start_of_week)
             except Exception as e:
                  print(f"Weekly Goals: Feast Injection Failed: {e}")
 

@@ -7,6 +7,7 @@ class FeastProposalRequest(BaseModel):
     event_name: str
     event_date: date
     custom_deduction: Optional[int] = None
+    selected_meals: Optional[List[str]] = None
 
 class FeastActivateRequest(BaseModel):
     event_name: str
@@ -17,6 +18,7 @@ class FeastActivateRequest(BaseModel):
     workout_boost: bool = True
     workout_preference: str = "standard"  # standard, cardio, skip
     custom_deduction: Optional[int] = None
+    selected_meals: Optional[List[str]] = None
 
 class FeastUpdateRequest(BaseModel):
     daily_deduction: Optional[int] = None
@@ -40,6 +42,8 @@ class FeastDeactivationPreviewResponse(BaseModel):
     banked_calories_lost: int
     workout_status: str
     event_name: str
+    original_diet_snapshot: Optional[dict] = None
+    meal_breakdown: Optional[dict] = None
 
 # RESPONSES
 class FeastStatusResponse(BaseModel):
@@ -53,6 +57,8 @@ class FeastStatusResponse(BaseModel):
     base_calories: float
     effective_calories: float
     workout_boost_enabled: bool
+    selected_meals: Optional[List[str]] = None
+    original_diet_snapshot: Optional[dict] = None
 
 class FeastOverrideResponse(BaseModel):
     meal_id: str

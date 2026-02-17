@@ -147,7 +147,9 @@ def get_feast_status(
         start_date=config.start_date,
         base_calories=config.base_calories,
         effective_calories=effective["calories"],
-        workout_boost_enabled=config.workout_boost_enabled
+        workout_boost_enabled=config.workout_boost_enabled,
+        selected_meals=config.selected_meals,
+        original_diet_snapshot=config.original_diet_snapshot
     )
 
 @router.post("/propose")
@@ -162,7 +164,8 @@ def propose_feast(
         user_id=user_id,
         event_date=request.event_date,
         event_name=request.event_name,
-        custom_deduction=request.custom_deduction
+        custom_deduction=request.custom_deduction,
+        selected_meals=request.selected_meals
     )
     
     if "error" in proposal:
@@ -186,7 +189,10 @@ def activate_feast(
         "daily_deduction": request.daily_deduction,
         "total_banked": request.total_banked,
         "start_date": request.start_date,
-        "custom_deduction": request.custom_deduction
+        "total_banked": request.total_banked,
+        "start_date": request.start_date,
+        "custom_deduction": request.custom_deduction,
+        "selected_meals": request.selected_meals
     }
     
     try:

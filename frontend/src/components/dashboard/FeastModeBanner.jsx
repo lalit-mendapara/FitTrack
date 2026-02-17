@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Sparkles, Utensils, Calendar, TrendingDown, PartyPopper, XCircle } from 'lucide-react';
+import { Utensils, Calendar, XCircle } from 'lucide-react';
 import feastModeService from '../../api/feastModeService';
+import feastLogo from '../../images/Feast-logo98_png586.png';
 
 const FeastModeBanner = ({ event, onUpdate }) => {
     const [loading, setLoading] = useState(false);
@@ -32,8 +33,8 @@ const FeastModeBanner = ({ event, onUpdate }) => {
             <div className="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-2xl p-0.5 shadow-lg mb-6 animate-in fade-in slide-in-from-top-4">
                 <div className="bg-white rounded-[14px] p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="flex items-start gap-4">
-                        <div className="p-3 bg-indigo-50 rounded-xl text-indigo-600">
-                            <TrendingDown size={24} />
+                        <div className="p-2 bg-indigo-50 rounded-xl">
+                            <img src={feastLogo} alt="Feast Mode" className="h-9 w-9 object-contain" />
                         </div>
                         <div>
                             <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
@@ -84,8 +85,8 @@ const FeastModeBanner = ({ event, onUpdate }) => {
                 </div>
                 
                 <div className="flex items-start gap-4 relative z-10">
-                    <div className="p-3 bg-orange-100 rounded-xl text-orange-600">
-                        <PartyPopper size={24} />
+                    <div className="p-2 bg-orange-100 rounded-xl">
+                        <img src={feastLogo} alt="Feast Mode" className="h-9 w-9 object-contain" />
                     </div>
                     <div>
                         <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">

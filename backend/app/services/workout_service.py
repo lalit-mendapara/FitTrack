@@ -2,6 +2,7 @@
 import json
 import logging
 import re
+from difflib import get_close_matches
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from datetime import date
@@ -11,6 +12,7 @@ from app.models.workout_plan import WorkoutPlan
 from app.models.workout_plan_history import WorkoutPlanHistory
 from app.models.workout_preferences import WorkoutPreferences
 from app.models.exercise import Exercise
+from app.models.tracking import WorkoutLog, WorkoutSession
 from app.schemas.workout_plan import WorkoutPlanRequestData, ProfileData
 
 from app.services import llm_service
@@ -35,6 +37,42 @@ def _normalize_name(name: str) -> str:
     if not name:
         return ""
     return re.sub(r'[^a-z0-9]', '', name.lower())
+
+
+def _find_exercise_by_name(name: str, ex_map: Dict[str, Exercise], norm_ex_map: Dict[str, Exercise]) -> Optional[Exercise]:
+    """
+    Resolve an exercise by name with tolerant matching.
+    Handles minor wording differences like "Battle Ropes" vs "Battling Ropes".
+    """
+    raw_name = (name or "").lower().strip()
+    if not raw_name:
+        return None
+
+    # 1) Exact raw match
+    ex_obj = ex_map.get(raw_name)
+    if ex_obj:
+        return ex_obj
+
+    # 2) Exact normalized match
+    norm_name = _normalize_name(raw_name)
+    ex_obj = norm_ex_map.get(norm_name)
+    if ex_obj:
+        return ex_obj
+
+    # 3) Normalized substring fallback
+    ex_obj = next(
+        (ex for n_name, ex in norm_ex_map.items() if norm_name in n_name or n_name in norm_name),
+        None,
+    )
+    if ex_obj:
+        return ex_obj
+
+    # 4) Fuzzy fallback for inflection/typos
+    closest = get_close_matches(norm_name, list(norm_ex_map.keys()), n=1, cutoff=0.75)
+    if closest:
+        return norm_ex_map.get(closest[0])
+
+    return None
 
 def get_exercises_by_experience(db: Session, experience_level: str) -> List[Exercise]:
     """Filter exercises by difficulty based on user experience."""
@@ -234,49 +272,69 @@ def generate_workout_plan(db: Session, request_data: WorkoutPlanRequestData):
         try:
             old_schedule = existing_plan_db.weekly_schedule
             new_schedule = generated_plan.get("weekly_schedule", {})
-            
-            # 0=Mon, 1=Tue, ..., 6=Sun
-            today_idx = datetime.today().weekday() 
+
+            # Preserve history ONLY when there are actual past workout logs/sessions.
+            # If user has no past logs, regeneration should be a full fresh plan.
+            today_date = datetime.today().date()
+            today_idx = datetime.today().weekday()
+
+            logged_workout_dates = {
+                row[0]
+                for row in db.query(WorkoutLog.date)
+                .filter(WorkoutLog.user_id == user_id, WorkoutLog.date < today_date)
+                .distinct()
+                .all()
+                if row[0] is not None
+            }
+            logged_session_dates = {
+                row[0]
+                for row in db.query(WorkoutSession.date)
+                .filter(WorkoutSession.user_id == user_id, WorkoutSession.date < today_date)
+                .distinct()
+                .all()
+                if row[0] is not None
+            }
+            logged_day_names = {d.strftime("%A") for d in (logged_workout_dates | logged_session_dates)}
+
             print(f" [INFO] Today is index {today_idx} ({datetime.today().strftime('%A')})")
-            
-            # Map day keys (day1, day2...) to indices 0..6
-            # We assume day1=Monday, day2=Tuesday based on standard logic, 
-            # BUT we should check the 'day_name' inside if available, or just index.
-            # Standard assumption: keys are ordered 1..7.
-            
+            print(f" [INFO] Past logged day names: {sorted(logged_day_names)}")
+
             # Helper to get index from key "day1" -> 0
             def get_day_idx(k):
                 try:
                     return int(re.sub(r'\D', '', k)) - 1
-                except:
+                except Exception:
                     return -1
 
             days_merged = 0
-            
+
             # Check consistency (e.g. if days_per_week changed, don't merge)
             if len(old_schedule) != len(new_schedule):
-                 print(" [WARN] Plan duration changed (Days mismatch). Skipping merge to avoid corruption.")
+                print(" [WARN] Plan duration changed (Days mismatch). Skipping merge to avoid corruption.")
+            elif not logged_day_names:
+                print(" [INFO] No past workout logs found. Keeping full fresh regenerated plan.")
             else:
                 for day_key in new_schedule.keys():
                     d_idx = get_day_idx(day_key)
-                    
+                    day_name = (new_schedule.get(day_key, {}) or {}).get("day_name")
+
                     if 0 <= d_idx < today_idx:
-                        # PAST DAY -> RESTORE OLD DATA
-                        if day_key in old_schedule:
-                            print(f" [MERGE] Restoring history for {day_key} (Past Day).")
+                        # PAST DAY -> restore only if that weekday has logged history
+                        if day_name in logged_day_names and day_key in old_schedule:
+                            print(f" [MERGE] Restoring logged history for {day_key} ({day_name}).")
                             new_schedule[day_key] = old_schedule[day_key]
                             days_merged += 1
                         else:
-                            print(f" [WARN] Old plan missing {day_key}, keeping new.")
+                            print(f" [NEW]   No logs for {day_key} ({day_name}). Keeping regenerated day.")
                     elif d_idx == today_idx:
                         print(f" [NEW]   Generating fresh plan for {day_key} (TODAY).")
                     else:
                         print(f" [NEW]   Generating fresh plan for {day_key} (Future).")
-                
+
                 # Apply merged schedule back to generated_plan
                 generated_plan["weekly_schedule"] = new_schedule
-                print(f" [DONE] Successfully restored {days_merged} past days.")
-                
+                print(f" [DONE] Successfully restored {days_merged} logged past days.")
+
         except Exception as e:
             print(f" [ERROR] Merge failed: {e}. Proceeding with full new plan.")
     else:
@@ -292,19 +350,7 @@ def generate_workout_plan(db: Session, request_data: WorkoutPlanRequestData):
         if "exercises" in day_data:
             for item in day_data["exercises"]:
                 name = item.get("exercise", "").lower().strip()
-                # Find exercise object
-                # Find exercise object
-                ex_obj = ex_map.get(name) 
-                
-                # Smart Fuzzy Match (Normalization)
-                if not ex_obj:
-                    norm_name = _normalize_name(name)
-                    # 1. Try exact normalized match
-                    ex_obj = norm_ex_map.get(norm_name)
-                    
-                    # 2. Try bidirectional substring match on normalized names
-                    if not ex_obj:
-                        ex_obj = next((ex for n_name, ex in norm_ex_map.items() if norm_name in n_name or n_name in norm_name), None)
+                ex_obj = _find_exercise_by_name(name, ex_map, norm_ex_map)
                 
                 # Default values if unknown
                 cat = ex_obj.category if ex_obj else "Strength"
@@ -345,15 +391,8 @@ def generate_workout_plan(db: Session, request_data: WorkoutPlanRequestData):
             for item in day_data["cardio_exercises"]:
                 name = item.get("exercise", "").lower().strip()
                 duration = item.get("duration", "20 mins")
-                
-                ex_obj = ex_map.get(name)
-                
-                # Smart Fuzzy Match for Cardio
-                if not ex_obj:
-                    norm_name = _normalize_name(name)
-                    ex_obj = norm_ex_map.get(norm_name)
-                    if not ex_obj:
-                         ex_obj = next((ex for n_name, ex in norm_ex_map.items() if norm_name in n_name or n_name in norm_name), None)
+
+                ex_obj = _find_exercise_by_name(name, ex_map, norm_ex_map)
                 
                 cat = ex_obj.category if ex_obj else "Cardio"
                 diff = ex_obj.difficulty if ex_obj else "Intermediate"

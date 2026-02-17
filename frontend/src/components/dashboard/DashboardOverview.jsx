@@ -79,7 +79,7 @@ const DashboardOverview = ({ hasDietPlan, hasWorkoutPlan }) => {
     return (
         <div className="space-y-6">
             {/* Feast Mode Banner */}
-            {feastStatus?.is_active && <FeastModeBanner event={feastStatus.config} onUpdate={fetchFeastStatus} />}
+            {feastStatus && <FeastModeBanner event={feastStatus} onUpdate={fetchFeastStatus} />}
 
             {/* Notifications Banner */}
             {showNotifications && notifications.length > 0 && (

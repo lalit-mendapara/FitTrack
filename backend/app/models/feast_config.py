@@ -22,6 +22,11 @@ class FeastConfig(Base):
     
     # Workout Specifics
     feast_workout_data = Column(JSON, nullable=True)
+
+    # New Fields for Comprehensive Update
+    selected_meals = Column(JSON, nullable=True) # e.g. ["breakfast", "snacks"]
+    original_diet_snapshot = Column(JSON, nullable=True) # Full snapshot of original calories
+
     
     # Base Profile Snapshots (for restoration)
     base_calories = Column(Float, nullable=False)

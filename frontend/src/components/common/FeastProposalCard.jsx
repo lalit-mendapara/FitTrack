@@ -71,7 +71,7 @@ const FeastProposalCard = ({ proposal, onConfirm, onCancel, loading }) => {
                <input 
                   type="range" 
                   min="50" 
-                  max="1000" 
+                  max="400" 
                   step="50" 
                   value={deduction} 
                   onChange={(e) => setDeduction(Number(e.target.value))}
@@ -79,7 +79,7 @@ const FeastProposalCard = ({ proposal, onConfirm, onCancel, loading }) => {
                />
                <div className="flex justify-between mt-1 text-[10px] text-gray-400">
                    <span>Min (50)</span>
-                   <span>Max (1000)</span>
+                   <span>Max (400)</span>
                </div>
           </div>
 
@@ -118,28 +118,49 @@ const FeastProposalCard = ({ proposal, onConfirm, onCancel, loading }) => {
                       </button>
                   ))}
               </div>
+              
+              {/* Dynamic Muscle Group Display */}
+              <div className="mt-3 p-3 bg-gray-50 rounded-lg border border-gray-100 flex items-center justify-between">
+                  <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Primary Muscle Group</span>
+                  <span className="text-sm font-bold text-indigo-700">
+                      {workoutPref === 'standard' && "Chest & Triceps"}
+                      {workoutPref === 'cardio' && "Cardio & Core"}
+                      {workoutPref === 'skip' && "Rest / Active Recovery"}
+                  </span>
+              </div>
           </div>
       </div>
 
-      <div className="flex gap-2 pt-2 border-t border-gray-100">
-          <button 
-              onClick={onCancel}
-              className="flex-1 py-2 bg-white border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
-          >
-              Back
-          </button>
-          <button 
-              onClick={handleConfirm}
-              disabled={loading}
-              className="flex-[2] py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow-md transition-all flex items-center justify-center gap-2"
-          >
-              {loading ? 'Activating...' : (
-                  <>
+      <div className="flex gap-2 pt-2 border-t border-gray-100 flex-col">
+          {loading ? (
+              <div className="space-y-2">
+                  <div className="flex justify-between text-xs text-gray-500">
+                      <span>Activating Feast Mode...</span>
+                      <span>Please wait</span>
+                  </div>
+                  <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                      <div className="bg-indigo-600 h-2 rounded-full animate-progress-indeterminate origin-left"></div>
+                  </div>
+              </div>
+          ) : (
+              <div className="flex gap-2">
+                <button 
+                    onClick={onCancel}
+                    disabled={loading}
+                    className="flex-1 py-2 bg-white border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+                >
+                    Back
+                </button>
+                <button 
+                    onClick={handleConfirm}
+                    disabled={loading}
+                    className="flex-[2] py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
                     <span>Confirm Plan</span>
                     <Check size={14} />
-                  </>
-              )}
-          </button>
+                </button>
+              </div>
+          )}
       </div>
     </div>
   );

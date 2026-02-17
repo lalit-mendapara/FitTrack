@@ -4,6 +4,7 @@ from app.database import get_db
 from app.schemas.workout_plan import WorkoutPlanRequest, WorkoutPlanResponse
 from app.services.workout_service import generate_workout_plan
 from app.api.auth import get_current_user
+from datetime import date
 import sys
 
 # Langfuse tracing
@@ -78,7 +79,7 @@ def get_current_workout(
         # However, plan is an ORM object. `plan.weekly_schedule` is a JSON field (dict).
         # We can update it.
         if plan.weekly_schedule:
-             updated_schedule = feast_manager.inject_feast_workout_into_plan(current_user.id, plan.weekly_schedule)
+             updated_schedule = feast_manager.inject_feast_workout_into_plan(current_user.id, plan.weekly_schedule, reference_date=date.today())
              # Important: We must not commit this change to DB, just return it.
              # Modifying the ORM object's attribute effectively changes what's returned.
              plan.weekly_schedule = updated_schedule

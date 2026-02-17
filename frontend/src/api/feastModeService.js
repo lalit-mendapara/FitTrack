@@ -1,15 +1,4 @@
-import axios from 'axios';
-
-// Get base URL from environment or default to local
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-
-const api = axios.create({
-  baseURL: API_URL,
-  withCredentials: true,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
+import api from './axios';
 
 // Add auth token interceptor if needed (assuming user_id is handled via token or session)
 // For now, assuming simple endpoint calls. If user_id is needed in params, we'll add it.
@@ -35,19 +24,41 @@ export const feastModeService = {
    * @param {string} eventName 
    * @param {string} eventDate (YYYY-MM-DD)
    * @param {number} [customDeduction] Optional custom deduction amount
+   * @param {string[]} [selectedMeals] Optional list of meals to adjust
    * @returns {Promise<object>} Proposal details
    */
-  proposeStrategy: async (eventName, eventDate, customDeduction = null) => {
+  proposeStrategy: async (eventName, eventDate, customDeduction = null, selectedMeals = null) => {
     try {
       const payload = {
         event_name: eventName,
         event_date: eventDate,
-        custom_deduction: customDeduction
+        custom_deduction: customDeduction,
+        selected_meals: selectedMeals
       };
       const response = await api.post('/feast-mode/propose', payload);
       return response.data;
     } catch (error) {
       console.error('Error proposing Feast Mode strategy:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Run a pre-check before activation
+   * @param {string} startDate 
+   * @param {number} dailyDeduction 
+   * @returns {Promise<object>} Check results { warning, message, ... }
+   */
+  preActivateCheck: async (startDate, dailyDeduction) => {
+    try {
+      const payload = {
+        start_date: startDate,
+        daily_deduction: dailyDeduction
+      };
+      const response = await api.post('/feast-mode/pre-activate-check', payload);
+      return response.data;
+    } catch (error) {
+      console.error('Error in pre-activate check:', error);
       throw error;
     }
   },
@@ -134,5 +145,6 @@ export const feastModeService = {
     }
   }
 };
+
 
 export default feastModeService;
