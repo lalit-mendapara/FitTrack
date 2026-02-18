@@ -85,7 +85,7 @@ const DashboardOverview = ({ hasDietPlan, hasWorkoutPlan }) => {
             {showNotifications && notifications.length > 0 && (
                 <div className="space-y-2">
                     {notifications.map(notif => (
-                        <div key={notif.id} className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl p-4 text-white shadow-lg flex items-center justify-between animate-in slide-in-from-top-2">
+                        <div key={notif.id} className="bg-linear-to-r from-indigo-500 to-purple-600 rounded-xl p-4 text-white shadow-lg flex items-center justify-between animate-in slide-in-from-top-2">
                             <div className="flex items-center gap-3">
                                 <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
                                     <Bell size={20} className="text-white" />
@@ -110,7 +110,7 @@ const DashboardOverview = ({ hasDietPlan, hasWorkoutPlan }) => {
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 md:p-6">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
-                        <div className="p-3 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 rounded-2xl text-white shadow-lg shadow-indigo-200">
+                        <div className="p-3 bg-linear-to-br from-indigo-500 via-purple-500 to-pink-500 rounded-2xl text-white shadow-lg shadow-indigo-200">
                             <LayoutDashboard size={28} />
                         </div>
                         <div>
@@ -126,7 +126,7 @@ const DashboardOverview = ({ hasDietPlan, hasWorkoutPlan }) => {
                     {baseCaloriesTarget > 0 && (
                         <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
                             {/* Workout To Burn */}
-                            <div className="flex flex-1 items-center justify-between sm:justify-start gap-4 bg-gradient-to-r from-orange-50 to-red-50 px-5 py-3 rounded-xl border border-orange-100">
+                            <div className="flex flex-1 items-center justify-between sm:justify-start gap-4 bg-linear-to-r from-orange-50 to-red-50 px-5 py-3 rounded-xl border border-orange-100">
                                 <div className="flex items-center gap-2">
                                     <Flame size={20} className="text-orange-600" />
                                     <span className="text-sm font-medium text-gray-600">To Burn</span>
@@ -142,7 +142,7 @@ const DashboardOverview = ({ hasDietPlan, hasWorkoutPlan }) => {
                             </div>
 
                             {/* Remaining Calories */}
-                            <div className="flex flex-1 items-center justify-between sm:justify-start gap-4 bg-gradient-to-r from-emerald-50 to-teal-50 px-5 py-3 rounded-xl border border-emerald-100">
+                            <div className="flex flex-1 items-center justify-between sm:justify-start gap-4 bg-linear-to-r from-emerald-50 to-teal-50 px-5 py-3 rounded-xl border border-emerald-100">
                                 <div className="flex items-center gap-2">
                                     <Target size={20} className="text-emerald-600" />
                                     <span className="text-sm font-medium text-gray-600">Remaining</span>
@@ -156,7 +156,7 @@ const DashboardOverview = ({ hasDietPlan, hasWorkoutPlan }) => {
                                     </div>
                                     <div className="w-24 h-1.5 bg-gray-200 rounded-full mt-1 ml-auto">
                                         <div 
-                                            className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full transition-all duration-500"
+                                            className="h-full bg-linear-to-r from-emerald-500 to-teal-500 rounded-full transition-all duration-500"
                                             style={{ width: `${progressPercent}%` }}
                                         />
                                     </div>

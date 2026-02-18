@@ -174,7 +174,7 @@ const FeastSetupCard = ({ onSubmit, onCancel, dietPlan }) => {
            </button>
            <button
              type="submit"
-             className="flex-[2] py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-md transition-colors"
+             className="flex-2 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-md transition-colors"
            >
              Check Strategy
            </button>

@@ -113,15 +113,20 @@ async def chat_with_coach(
         
         db.commit()
         
-        # 4. Generate Title in Background
-        # Determine current message count for progressive title strategy
+        # 4. Generate Title in Background (Dynamic Refinement)
+        # Generate title based on content analysis with progressive refinement
         message_count = db.query(ChatHistory).filter(ChatHistory.session_id == session_id).count()
         
         trigger_mode = None
-        if message_count <= 2 and (is_new_session or chat_session.title == "New Chat"):
+        if message_count <= 3 and (is_new_session or chat_session.title == "New Chat"):
+            # Initial title generation for new sessions
             trigger_mode = "initial"
-        elif message_count == 6:  # Approx 3 turns (User-AI, User-AI, User-AI)
-            trigger_mode = "refined"
+        elif 4 <= message_count <= 5:
+            # Progressive refinement for questions 4-5
+            trigger_mode = "progressive"
+        elif message_count == 6:
+            # Final comprehensive summary after 6 questions
+            trigger_mode = "comprehensive"
             
         if trigger_mode:
             print(f"[Chat API] Triggering '{trigger_mode}' title generation for {session_id}")
@@ -161,17 +166,22 @@ def update_session_title(session_id: str, user_id: int, first_message: str, trig
              
              if trigger_mode == "initial":
                  # Fast, simple generation based on first message
+                 from app.services.llm_service import generate_chat_title
                  title = generate_chat_title(first_message)
              
-             elif trigger_mode == "refined":
-                 # Advanced generation based on full history
-                 # Get last 6 messages (3 turns)
-                 history_objs = db_session.query(ChatHistory).filter(
-                    ChatHistory.session_id == session_id
-                 ).order_by(ChatHistory.id.asc()).limit(6).all()
-                 
-                 history = [{"role": m.role, "content": m.content} for m in history_objs]
+             elif trigger_mode == "progressive":
+                 # Progressive refinement for questions 4-5 - focus on latest content
+                 from app.services.llm_service import generate_refined_chat_title
+                 latest_msgs = db_session.query(ChatHistory).filter(ChatHistory.session_id == session_id).order_by(ChatHistory.id.desc()).limit(3).all()
+                 history = [{"role": m.role, "content": m.content} for m in latest_msgs[::-1]]  # Reverse for chronological
                  title = generate_refined_chat_title(history)
+             
+             elif trigger_mode == "comprehensive":
+                 # Comprehensive summary after 6 questions - analyze full conversation
+                 from app.services.llm_service import generate_comprehensive_chat_title
+                 all_msgs = db_session.query(ChatHistory).filter(ChatHistory.session_id == session_id).order_by(ChatHistory.id.asc()).all()
+                 history = [{"role": m.role, "content": m.content} for m in all_msgs]
+                 title = generate_comprehensive_chat_title(history)
 
              # Update title
              session.title = title

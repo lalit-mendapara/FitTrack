@@ -68,7 +68,7 @@ const Signup = () => {
 
       <div className="max-w-md w-full space-y-8 relative z-10 bg-white/10 backdrop-blur-md p-10 rounded-3xl shadow-2xl border border-white/20">
         <div>
-          <div className="mx-auto w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg mb-4">
+          <div className="mx-auto w-12 h-12 bg-linear-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg mb-4">
             <span className="text-white font-bold text-xl">F</span>
           </div>
           <h2 className="mt-2 text-center text-3xl font-extrabold text-white">

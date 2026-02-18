@@ -65,7 +65,7 @@ const WeeklyDietTrack = () => {
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 w-full">
             <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-3">
-                    <div className="p-2.5 bg-gradient-to-br from-teal-500 to-emerald-600 rounded-xl text-white shadow-lg shadow-teal-200">
+                    <div className="p-2.5 bg-linear-to-br from-teal-500 to-emerald-600 rounded-xl text-white shadow-lg shadow-teal-200">
                         <Utensils size={22} />
                     </div>
                     <div>

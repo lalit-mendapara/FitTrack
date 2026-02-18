@@ -22,7 +22,7 @@ const WORKOUT_GENERATION_STEPS = [
   "Plan is created"
 ];
 
-const WorkoutPlan = ({ isEmbedded = false }) => {
+const WorkoutPlan = ({ isEmbedded = false, onPlanGenerated }) => {
   const { user } = useAuth();
   
   const [showGenerationModal, setShowGenerationModal] = useState(false);
@@ -49,6 +49,9 @@ const WorkoutPlan = ({ isEmbedded = false }) => {
       setGenerationSuccess(true);
       setLoadingStep(WORKOUT_GENERATION_STEPS.length - 1);
       
+      // Notify parent (Dashboard) that a plan now exists — unlocks tabs
+      if (onPlanGenerated) onPlanGenerated();
+
       setTimeout(() => {
           setShowGenerationModal(false);
           setGenerationSuccess(false);
@@ -354,8 +357,8 @@ const WorkoutPlan = ({ isEmbedded = false }) => {
       )}
 
       {/* Hero / Header Section */}
-      <div className={`${isEmbedded ? 'pt-4' : 'pt-20'} bg-white border-b border-gray-100 shadow-sm relative overflow-hidden mb-8 flex-shrink-0 z-10`}>
-         <div className="absolute inset-0 bg-gradient-to-r from-indigo-50/50 to-white pointer-events-none"></div>
+      <div className={`${isEmbedded ? 'pt-4' : 'pt-20'} bg-white border-b border-gray-100 shadow-sm relative overflow-hidden mb-8 shrink-0 z-10`}>
+         <div className="absolute inset-0 bg-linear-to-r from-indigo-50/50 to-white pointer-events-none"></div>
          <div className="container mx-auto px-6 relative z-10 pb-5">
             <div className="flex flex-col lg:flex-row justify-between items-center gap-4">
                 <div className="text-center lg:text-left">
@@ -363,7 +366,7 @@ const WorkoutPlan = ({ isEmbedded = false }) => {
                       <div className="p-2 bg-indigo-100 rounded-lg text-indigo-600">
                         <Dumbbell size={24} />
                       </div>
-                      Your <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600">Workout Plan</span>
+                      Your <span className="text-transparent bg-clip-text bg-linear-to-r from-indigo-600 to-purple-600">Workout Plan</span>
                     </h1>
                     {plan && (
                         <div className="flex flex-col items-center lg:items-start gap-2 mt-2">
@@ -386,7 +389,7 @@ const WorkoutPlan = ({ isEmbedded = false }) => {
         <div className="container mx-auto px-6">
         {!plan ? (
              <div className="text-center py-20">
-               <div className="max-w-lg mx-auto bg-white p-12 rounded-[2rem] shadow-xl border border-gray-100">
+               <div className="max-w-lg mx-auto bg-white p-12 rounded-4xl shadow-xl border border-gray-100">
                   <div className="w-24 h-24 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-8 animate-bounce-slow">
                      <Dumbbell size={40} className="text-indigo-600" />
                   </div>
@@ -431,12 +434,12 @@ const WorkoutPlan = ({ isEmbedded = false }) => {
                              </div>
                          </div>
                          
-                         <div className={`transition-all duration-300 overflow-hidden md:max-h-[800px] md:opacity-100 md:mt-2 ${isCardioOpen ? 'max-h-[800px] opacity-100 mt-2' : 'max-h-0 opacity-0'}`}>
+                         <div className={`transition-all duration-300 overflow-hidden md:max-h-200 md:opacity-100 md:mt-2 ${isCardioOpen ? 'max-h-200 opacity-100 mt-2' : 'max-h-0 opacity-0'}`}>
                              <ul className="space-y-3">
                                 {plan.cardio_recommendations && plan.cardio_recommendations.length > 0 ? (
                                     plan.cardio_recommendations.map((item, idx) => (
                                         <li key={idx} className="flex items-start gap-2 text-gray-600 text-sm font-medium">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-orange-400 mt-1.5 flex-shrink-0"></div>
+                                            <div className="w-1.5 h-1.5 rounded-full bg-orange-400 mt-1.5 shrink-0"></div>
                                             <span>{item}</span>
                                         </li>
                                     ))
@@ -467,12 +470,12 @@ const WorkoutPlan = ({ isEmbedded = false }) => {
                              </div>
                          </div>
                          
-                         <div className={`transition-all duration-300 overflow-hidden md:max-h-[800px] md:opacity-100 md:mt-2 ${isProgressionOpen ? 'max-h-[800px] opacity-100 mt-2' : 'max-h-0 opacity-0'}`}>
+                         <div className={`transition-all duration-300 overflow-hidden md:max-h-200 md:opacity-100 md:mt-2 ${isProgressionOpen ? 'max-h-200 opacity-100 mt-2' : 'max-h-0 opacity-0'}`}>
                              <ul className="space-y-3">
                                 {plan.progression_guidelines && plan.progression_guidelines.length > 0 ? (
                                     plan.progression_guidelines.map((item, idx) => (
                                         <li key={idx} className="flex items-start gap-2 text-gray-600 text-sm font-medium">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 mt-1.5 flex-shrink-0"></div>
+                                            <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 mt-1.5 shrink-0"></div>
                                             <span>{item}</span>
                                         </li>
                                     ))
@@ -515,7 +518,7 @@ const WorkoutPlan = ({ isEmbedded = false }) => {
                              disabled={generating}
                              className="flex items-center gap-2 px-3 py-2 md:px-5 md:py-2.5 bg-white rounded-xl shadow-sm border border-gray-100 text-indigo-600 font-bold text-xs md:text-sm hover:bg-indigo-50 transition-colors"
                         >
-                             <RefreshCw className={`w-4 h-4 md:w-[18px] md:h-[18px] ${generating ? "animate-spin" : ""}`} />
+                             <RefreshCw className={`w-4 h-4 md:w-4.5 md:h-4.5 ${generating ? "animate-spin" : ""}`} />
                              {generating ? 'Updating...' : 'Regenerate'}
                         </button>
 
@@ -578,7 +581,7 @@ const WorkoutPlan = ({ isEmbedded = false }) => {
                     <div className="mt-8 flex justify-center">
                         <button
                             onClick={handleFinishWorkout}
-                            className="w-full md:w-auto px-8 py-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-black text-lg rounded-2xl shadow-xl shadow-emerald-200 transform transition-all hover:-translate-y-1 active:scale-95 flex items-center justify-center gap-3"
+                            className="w-full md:w-auto px-8 py-4 bg-linear-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-black text-lg rounded-2xl shadow-xl shadow-emerald-200 transform transition-all hover:-translate-y-1 active:scale-95 flex items-center justify-center gap-3"
                         >
                             <CheckCircle size={24} className="animate-pulse" />
                             Finish Workout
@@ -646,8 +649,8 @@ const WorkoutPlan = ({ isEmbedded = false }) => {
       )}
       {/* History Check Modal */}
       {showHistoryModal && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
-           <div className="bg-white rounded-[2rem] p-8 shadow-2xl max-w-md w-full border border-gray-100 relative overflow-hidden">
+        <div className="fixed inset-0 z-70 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+           <div className="bg-white rounded-4xl p-8 shadow-2xl max-w-md w-full border border-gray-100 relative overflow-hidden">
                <div className="text-center mb-6">
                    <div className="w-16 h-16 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-4 text-indigo-500">
                       <RefreshCw size={32} />
@@ -690,8 +693,8 @@ const WorkoutPlan = ({ isEmbedded = false }) => {
       )}
       {/* Conflict Modal */}
       {showConflictModal && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
-           <div className="bg-white rounded-[2rem] p-8 shadow-2xl max-w-md w-full border border-gray-100 relative overflow-hidden">
+        <div className="fixed inset-0 z-70 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+           <div className="bg-white rounded-4xl p-8 shadow-2xl max-w-md w-full border border-gray-100 relative overflow-hidden">
                <div className="text-center mb-6">
                    <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center mx-auto mb-4 text-amber-500">
                       <RefreshCw size={32} />

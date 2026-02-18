@@ -92,7 +92,7 @@ const CardioCard = ({ exercise, initialLogId = null, targetDate = null, onLogUpd
                             <ul className="space-y-2">
                                 {exercise.instructions.map((point, idx) => (
                                     <li key={idx} className="flex gap-2 text-xs text-gray-600 leading-relaxed font-medium">
-                                        <span className="flex-shrink-0 w-1 h-1 rounded-full bg-orange-400 mt-1.5"></span>
+                                        <span className="shrink-0 w-1 h-1 rounded-full bg-orange-400 mt-1.5"></span>
                                         {point}
                                     </li>
                                 ))}

@@ -26,7 +26,7 @@ const GENERATION_STEPS = [
   "Plan is created" 
 ];
 
-const DietPlan = ({ isEmbedded = false }) => {
+const DietPlan = ({ isEmbedded = false, onPlanGenerated }) => {
   const [showGenerationModal, setShowGenerationModal] = useState(false);
   const [loadingStep, setLoadingStep] = useState(0);
   const [generationSuccess, setGenerationSuccess] = useState(false);
@@ -42,6 +42,9 @@ const DietPlan = ({ isEmbedded = false }) => {
       setGenerationSuccess(true);
       setLoadingStep(GENERATION_STEPS.length - 1); // Set to last step (Success message)
       
+      // Notify parent (Dashboard) that a plan now exists — unlocks tabs
+      if (onPlanGenerated) onPlanGenerated();
+
       // Close after delay
       setTimeout(() => {
           setShowGenerationModal(false);
@@ -327,13 +330,13 @@ const DietPlan = ({ isEmbedded = false }) => {
       )}
 
       {/* Hero / Header Section */}
-      <div className={`${isEmbedded ? 'pt-4' : 'pt-20'} bg-white border-b border-gray-100 shadow-sm relative overflow-hidden flex-shrink-0 z-10`}>
-         <div className="absolute inset-0 bg-gradient-to-r from-indigo-50/50 to-white pointer-events-none"></div>
+      <div className={`${isEmbedded ? 'pt-4' : 'pt-20'} bg-white border-b border-gray-100 shadow-sm relative overflow-hidden shrink-0 z-10`}>
+         <div className="absolute inset-0 bg-linear-to-r from-indigo-50/50 to-white pointer-events-none"></div>
          <div className="container mx-auto px-6 relative z-10 pb-5">
             <div className="flex flex-col lg:flex-row justify-between items-center gap-4">
                <div className="text-center lg:text-left">
                   <h1 className="text-3xl font-black text-gray-900 tracking-tight mb-1">
-                    Your Daily <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-indigo-400">Nutrition</span>
+                    Your Daily <span className="text-transparent bg-clip-text bg-linear-to-r from-indigo-600 to-indigo-400">Nutrition</span>
                   </h1>
                   {feastStatus && feastStatus.status === 'BANKING' ? (
                     <p className="text-sm font-semibold text-purple-600 mt-1 flex items-center gap-1.5 flex-wrap">
@@ -397,7 +400,7 @@ const DietPlan = ({ isEmbedded = false }) => {
         <div className="container mx-auto px-6 mt-6">
          {!plan || isPlanExpired ? (
             <div className="text-center py-20">
-               <div className="max-w-lg mx-auto bg-white p-12 rounded-[2rem] shadow-xl border border-gray-100">
+               <div className="max-w-lg mx-auto bg-white p-12 rounded-4xl shadow-xl border border-gray-100">
                   <div className="w-24 h-24 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-8 animate-bounce-slow">
                      <RefreshCw size={40} className="text-indigo-600" />
                   </div>
@@ -458,7 +461,7 @@ const DietPlan = ({ isEmbedded = false }) => {
                                className="flex items-center gap-2 px-3 py-2 md:px-5 md:py-2.5 bg-amber-50 rounded-xl shadow-sm border border-amber-100 text-amber-600 font-bold text-xs md:text-sm hover:bg-amber-100 transition-colors"
                                title="Reset to original plan"
                            >
-                               <RotateCcw className={`w-4 h-4 md:w-[18px] md:h-[18px] ${generating ? "animate-spin-reverse" : ""}`} />
+                               <RotateCcw className={`w-4 h-4 md:w-4.5 md:h-4.5 ${generating ? "animate-spin-reverse" : ""}`} />
                                Reset
                            </button>
                        )}
@@ -469,7 +472,7 @@ const DietPlan = ({ isEmbedded = false }) => {
                             disabled={generating}
                             className="flex items-center gap-2 px-3 py-2 md:px-5 md:py-2.5 bg-white rounded-xl shadow-sm border border-gray-100 text-indigo-600 font-bold text-xs md:text-sm hover:bg-indigo-50 transition-colors"
                         >
-                            <RefreshCw className={`w-4 h-4 md:w-[18px] md:h-[18px] ${generating ? "animate-spin" : ""}`} />
+                            <RefreshCw className={`w-4 h-4 md:w-4.5 md:h-4.5 ${generating ? "animate-spin" : ""}`} />
                             {generating ? 'Updating...' : 'Regenerate'}
                         </button>
 
@@ -568,8 +571,8 @@ const DietPlan = ({ isEmbedded = false }) => {
 
       {/* Conflict Modal */}
       {showConflictModal && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
-           <div className="bg-white rounded-[2rem] p-8 shadow-2xl max-w-md w-full border border-gray-100 relative overflow-hidden">
+        <div className="fixed inset-0 z-70 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+           <div className="bg-white rounded-4xl p-8 shadow-2xl max-w-md w-full border border-gray-100 relative overflow-hidden">
                <div className="text-center mb-6">
                    <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center mx-auto mb-4 text-amber-500">
                       <RefreshCw size={32} />

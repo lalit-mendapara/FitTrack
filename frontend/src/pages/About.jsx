@@ -11,11 +11,11 @@ const About = () => {
       <Navbar transparentTextColor="text-white" />
       
       {/* Hero Section */}
-      <div className="relative pt-32 pb-20 bg-gradient-to-br from-indigo-900 via-indigo-800 to-purple-900 text-white overflow-hidden">
+      <div className="relative pt-32 pb-20 bg-linear-to-br from-indigo-900 via-indigo-800 to-purple-900 text-white overflow-hidden">
         <div className="absolute inset-0 opacity-20 bg-[url('https://images.unsplash.com/photo-1543362906-acfc16c67564?ixlib=rb-4.0.3&auto=format&fit=crop&w=1965&q=80')] bg-cover bg-center"></div>
         <div className="container mx-auto px-6 relative z-10 text-center">
            <h1 className="text-5xl md:text-6xl font-extrabold mb-6 tracking-tight leading-tight">
-             Wellness is a <span className="text-transparent bg-clip-text bg-gradient-to-r from-teal-300 to-emerald-400">Journey</span>,<br/> Not a Destination.
+             Wellness is a <span className="text-transparent bg-clip-text bg-linear-to-r from-teal-300 to-emerald-400">Journey</span>,<br/> Not a Destination.
            </h1>
            <p className="text-xl text-indigo-100 max-w-2xl mx-auto font-light">
              We bring together the wisdom of world-class nutritionists and cutting-edge fitness planning to guide you every step of the way.
@@ -34,7 +34,7 @@ const About = () => {
                     alt="Healthy Indian Food" 
                     className="w-full h-auto object-cover"
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent flex items-end p-8">
+                  <div className="absolute inset-0 bg-linear-to-t from-black/70 to-transparent flex items-end p-8">
                      <span className="text-white font-bold text-lg">Inspired by Rujuta Diwekar</span>
                   </div>
                </div>
@@ -151,7 +151,7 @@ const About = () => {
                       alt="Workout Motivation" 
                       className="w-full h-auto object-cover transform group-hover:scale-105 transition-transform duration-700"
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/40 to-transparent flex flex-col justify-end p-8">
+                    <div className="absolute inset-0 bg-linear-to-t from-gray-900 via-gray-900/40 to-transparent flex flex-col justify-end p-8">
                        <span className="text-white bg-indigo-600 px-3 py-1 rounded-full text-xs font-bold w-max mb-2">Nike Training Club Philosophy</span>
                        <h3 className="text-2xl font-bold text-white">"Just Do It."</h3>
                     </div>

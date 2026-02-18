@@ -2,6 +2,7 @@
 import os
 import sys
 import json
+import requests
 from typing import Dict, List, Optional, Any
 
 # LangChain Imports
@@ -335,6 +336,61 @@ def call_llm(
         return None
 
 
+def _generate_title_direct_ollama(first_message: str) -> str:
+    """
+    Generate title using direct Ollama API call for remote models.
+    This bypasses LangChain issues with remote Ollama models.
+    """
+    try:
+        prompt = f"""Task: Analyze this message and extract the main topic/keywords to create a concise 5-word or shorter title.
+
+Message: "{first_message}"
+
+Instructions:
+- Focus on the central theme or main subject
+- Use keywords that capture the essence
+- Maximum 5 words
+- Must be grammatically correct and complete
+- No quotes or extra text
+
+Title:"""
+        
+        payload = {
+            "model": MODEL_NAME,
+            "prompt": prompt,
+            "stream": False,
+            "options": {
+                "temperature": 0.5,
+                "num_predict": 150  # Increased further to ensure complete response
+            }
+        }
+        
+        response = requests.post(
+            f"{OLLAMA_URL}/api/generate",
+            json=payload,
+            timeout=60  # Increased from 30 to 60 seconds
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            title = result.get("response", "").strip()
+            
+            # Clean up the title
+            title = title.strip('"\'')
+            if len(title) > 50:
+                title = title[:47] + "..."
+            
+            print(f"[LLM Service] Direct Ollama title: {title}")
+            return title if title else "New Chat"
+        else:
+            print(f"[LLM Service] Direct Ollama API error: {response.status_code}")
+            return "New Chat"
+            
+    except Exception as e:
+        print(f"[LLM Service] Direct Ollama title generation error: {e}")
+        return "New Chat"
+
+
 def generate_chat_title(first_message: str) -> str:
     """
     Generates a short, descriptive title for a chat session based on the first message.
@@ -342,11 +398,25 @@ def generate_chat_title(first_message: str) -> str:
     print(f"[LLM Service] Generating chat title for: {first_message[:50]}...")
     
     try:
+        # For remote Ollama models, use direct API call to avoid LangChain issues
+        if LLM_PROVIDER == "ollama" and "cloud" in MODEL_NAME:
+            return _generate_title_direct_ollama(first_message)
+        
         # Increase temp slightly to avoid getting stuck
         llm = get_llm(temperature=0.5, max_tokens=50)
         
-        prompt = f"""Task: Create a 3-5 word title for a chat starting with: "{first_message}"
-Output ONLY the title. No quotes."""
+        prompt = f"""Task: Analyze this message and extract the main topic/keywords to create a concise 5-word or shorter title.
+
+Message: "{first_message}"
+
+Instructions:
+- Focus on the central theme or main subject
+- Use keywords that capture the essence
+- Maximum 5 words
+- Must be grammatically correct and complete
+- No quotes or extra text
+
+Title:"""
         
         messages = [HumanMessage(content=prompt)]
         response = llm.invoke(messages)
@@ -364,39 +434,224 @@ Output ONLY the title. No quotes."""
         return "New Chat"
 
 
-def generate_refined_chat_title(history: List[Dict[str, str]]) -> str:
+def _generate_refined_title_direct_ollama(history: List[Dict[str, str]]) -> str:
     """
-    Generates a refined, highly accurate title based on conversation history.
-    Used for the 2nd stage of title generation (Turn 3+).
+    Generate refined title using direct Ollama API call for remote models.
     """
-    print(f"[LLM Service] Generatng refined title from {len(history)} messages...")
+    try:
+        # Grab the first message, a middle message, and the last 2 
+        if len(history) > 6:
+            focused_history = [history[0], history[len(history)//2]] + history[-2:]
+        else:
+            focused_history = history
+
+        conversation_summary = "\n".join([f"{m['role']}: {m['content'][:150]}" for m in focused_history])
+
+        prompt = f"""Analyze this conversation and extract the main topic/keywords to create a concise 5-word or shorter summary.
+
+CONVERSATION HISTORY:
+{conversation_summary}
+
+Instructions:
+- Focus on the central theme or main subject that emerged
+- Use keywords that capture the essence of the discussion
+- Maximum 5 words
+- Must be grammatically correct and complete
+- No quotes or extra text
+
+Title:"""
+        
+        payload = {
+            "model": MODEL_NAME,
+            "prompt": prompt,
+            "stream": False,
+            "options": {
+                "temperature": 0.4,
+                "num_predict": 150  # Increased to ensure complete response
+            }
+        }
+        
+        response = requests.post(
+            f"{OLLAMA_URL}/api/generate",
+            json=payload,
+            timeout=60  # Increased from 30 to 60 seconds
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            title = result.get("response", "").strip()
+            
+            # Remove "Title:" prefix if present
+            if title.lower().startswith("title:"):
+                title = title[6:].strip()
+                
+            # Clean up quotes
+            title = title.strip('"\'')
+            
+            # Final Fallback check
+            if not title:
+                print("[LLM Service] Empty refined title generated. Using fallback.")
+                return "Active Chat"
+                
+            if len(title) > 50:
+                title = title[:47] + "..."
+                
+            print(f"[LLM Service] Direct Ollama refined title: {title}")
+            return title
+        else:
+            print(f"[LLM Service] Direct Ollama API error for refined title: {response.status_code}")
+            return "New Chat"
+            
+    except Exception as e:
+        print(f"[LLM Service] Direct Ollama refined title generation error: {e}")
+        return "New Chat"
+
+
+def generate_comprehensive_chat_title(history: List[Dict[str, str]]) -> str:
+    """
+    Generates a comprehensive title by analyzing all questions in the conversation.
+    This is used after 6 questions to create a final, accurate summary.
+    """
+    print(f"[LLM Service] Generating comprehensive title from {len(history)} messages...")
     
     try:
-        # Increase tokens to ensure we get a response
-        llm = get_llm(temperature=0.6, max_tokens=150)
+        # For remote Ollama models, use direct API call
+        if LLM_PROVIDER == "ollama" and "cloud" in MODEL_NAME:
+            return _generate_comprehensive_title_direct_ollama(history)
         
-        # Format history for the prompt
-        conversation_text = ""
-        for msg in history:
-            role = "User" if msg["role"] == "user" else "AI Coach"
-            content = msg["content"][:200] 
-            conversation_text += f"{role}: {content}\n"
+        llm = get_llm(temperature=0.3, max_tokens=100)  # Lower temp for more focused title
+        
+        # Extract all user questions for comprehensive analysis
+        user_questions = [msg['content'] for msg in history if msg['role'] == 'user']
+        conversation_summary = "\n".join([f"Q{i+1}: {q}" for i, q in enumerate(user_questions)])
+        
+        prompt = f"""Analyze all these questions from a conversation and create a comprehensive 5-word title that captures the overall theme.
+
+ALL QUESTIONS:
+{conversation_summary}
+
+Instructions:
+- Identify the common theme across all questions
+- Focus on the main subject that connects all topics
+- Maximum 5 words
+- Must be grammatically correct and complete
+- No quotes or extra text
+
+Title:"""
+        
+        messages = [HumanMessage(content=prompt)]
+        response = llm.invoke(messages)
+        title = response.content.strip()
+        
+        # Clean up the title
+        title = title.strip('"\'')
+        if len(title) > 50:
+            title = title[:47] + "..."
+        
+        return title if title else "Active Chat"
+        
+    except Exception as e:
+        print(f"[LLM Service] Comprehensive title generation error: {e}")
+        return "Active Chat"
+
+
+def _generate_comprehensive_title_direct_ollama(history: List[Dict[str, str]]) -> str:
+    """
+    Generate comprehensive title using direct Ollama API call for remote models.
+    """
+    try:
+        # Extract all user questions for comprehensive analysis
+        user_questions = [msg['content'] for msg in history if msg['role'] == 'user']
+        conversation_summary = "\n".join([f"Q{i+1}: {q}" for i, q in enumerate(user_questions)])
+        
+        prompt = f"""Analyze all these questions from a conversation and create a comprehensive 5-word title that captures the overall theme.
+
+ALL QUESTIONS:
+{conversation_summary}
+
+Instructions:
+- Identify the common theme across all questions
+- Focus on the main subject that connects all topics
+- Maximum 5 words
+- Must be grammatically correct and complete
+- No quotes or extra text
+
+Title:"""
+        
+        payload = {
+            "model": MODEL_NAME,
+            "prompt": prompt,
+            "stream": False,
+            "options": {
+                "temperature": 0.3,
+                "num_predict": 150
+            }
+        }
+        
+        response = requests.post(
+            f"{OLLAMA_URL}/api/generate",
+            json=payload,
+            timeout=60  # Increased from 30 to 60 seconds
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            title = result.get("response", "").strip()
             
-        print(f"[LLM Service] Refined Title Input Context:\n{conversation_text}")
+            # Clean up quotes
+            title = title.strip('"\'')
+            
+            if len(title) > 50:
+                title = title[:47] + "..."
+                
+            print(f"[LLM Service] Direct Ollama comprehensive title: {title}")
+            return title
+        else:
+            print(f"[LLM Service] Direct Ollama API error for comprehensive title: {response.status_code}")
+            return "Active Chat"
+            
+    except Exception as e:
+        print(f"[LLM Service] Direct Ollama comprehensive title generation error: {e}")
+        return "Active Chat"
 
-        # Structured Prompt with System Message
-        system_msg = "You are a helpful AI assistant. Your task is to generate short, concise titles for conversations."
+
+def generate_refined_chat_title(history: List[Dict[str, str]]) -> str:
+    """
+    Generates a title by synthesizing the entire conversation history 
+    to reflect the overall theme of the chat session.
+    """
+    print(f"[LLM Service] Synthesizing title from {len(history)} messages...")
+    
+    try:
+        # For remote Ollama models, use direct API call
+        if LLM_PROVIDER == "ollama" and "cloud" in MODEL_NAME:
+            return _generate_refined_title_direct_ollama(history)
         
-        prompt = f"""Read the conversation below and generate a short title (3-5 words) that summarizes the specific topic or goal.
+        llm = get_llm(temperature=0.4, max_tokens=100) # Lower temp for more "grounded" titles
+        
+        # KEY UPDATE: Grab the first message, a middle message, and the last 2 
+        # to ensure the "Evolution" is captured without blowing the token limit.
+        if len(history) > 6:
+            focused_history = [history[0], history[len(history)//2]] + history[-2:]
+        else:
+            focused_history = history
 
-Conversation:
-{conversation_text}
+        conversation_summary = "\n".join([f"{m['role']}: {m['content'][:150]}" for m in focused_history])
 
-Rules:
-1. ONLY output the title.
-2. NO quotes.
-3. NO "Title:" prefix.
-4. Examples: "Keto Meal Plan", "Leg Day Workout", "Yoga Advice"
+        # Updated Prompt to force "Session-Level" thinking
+        system_msg = "You are a professional session archivist."
+        
+        prompt = f"""Analyze this conversation and extract the main topic/keywords to create a concise 5-word or shorter summary.
+
+CONVERSATION HISTORY:
+{conversation_summary}
+
+Instructions:
+- Focus on the central theme or main subject that emerged
+- Use keywords that capture the essence of the discussion
+- Maximum 5 words
+- Must be grammatically correct and complete
+- No quotes or extra text
 
 Title:"""
         

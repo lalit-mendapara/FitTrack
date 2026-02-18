@@ -435,7 +435,7 @@ const AICoach = () => {
     return (
         <div className="h-[calc(100vh-8rem)] md:h-[calc(100vh-5rem)] flex flex-col bg-white rounded-2xl shadow-xl overflow-hidden">
             {/* Header */}
-            <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-4 flex items-center justify-between shadow-lg flex-shrink-0">
+            <div className="bg-linear-to-r from-indigo-600 to-purple-600 px-6 py-4 flex items-center justify-between shadow-lg shrink-0">
                 <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm">
                         <Bot className="w-6 h-6 text-white" />
@@ -563,7 +563,7 @@ const AICoach = () => {
                                                     
                                                     {/* Dropdown Menu */}
                                                     {activeMenu === session.session_id && (
-                                                        <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-30 min-w-[120px]">
+                                                        <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-30 min-w-30">
                                                             <button
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
@@ -598,13 +598,13 @@ const AICoach = () => {
                 {/* Chat Area */}
                 <div className="flex-1 flex flex-col">
                     {/* Messages */}
-                    <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-4 bg-gradient-to-b from-gray-50 to-white">
+                    <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-4 bg-linear-to-b from-gray-50 to-white">
                         {messages.map((msg, idx) => (
                             <div key={idx} className={`flex gap-3 ${msg.type === 'user' ? 'flex-row-reverse' : ''}`}>
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
                                     msg.type === 'ai' 
-                                        ? 'bg-gradient-to-br from-indigo-500 to-purple-600' 
-                                        : 'bg-gradient-to-br from-blue-500 to-cyan-600'
+                                        ? 'bg-linear-to-br from-indigo-500 to-purple-600' 
+                                        : 'bg-linear-to-br from-blue-500 to-cyan-600'
                                 }`}>
                                     {msg.type === 'ai' ? (
                                         <Bot className="w-5 h-5 text-white" />
@@ -616,7 +616,7 @@ const AICoach = () => {
                                     <div className={`inline-block px-4 py-3 rounded-2xl shadow-sm ${
                                         msg.type === 'ai'
                                             ? 'bg-white border border-gray-200 text-gray-800'
-                                            : 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white'
+                                            : 'bg-linear-to-r from-blue-600 to-cyan-600 text-white'
                                     }`}>
                                         {msg.customContent ? (
                                             <>
@@ -685,7 +685,7 @@ const AICoach = () => {
                         ))}
                         {isLoading && (
                             <div className="flex gap-3">
-                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+                                <div className="w-8 h-8 rounded-full bg-linear-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
                                     <Bot className="w-5 h-5 text-white" />
                                 </div>
                                 <div className="bg-white border border-gray-200 px-4 py-3 rounded-2xl shadow-sm">
@@ -723,7 +723,7 @@ const AICoach = () => {
                     </div>
 
                     {/* Input Area */}
-                    <div className="border-t border-gray-200 p-4 bg-white flex-shrink-0">
+                    <div className="border-t border-gray-200 p-4 bg-white shrink-0">
                         <form onSubmit={handleSend} className="flex gap-3">
                             <input
                                 ref={inputRef}
@@ -737,7 +737,7 @@ const AICoach = () => {
                             <button
                                 type="submit"
                                 disabled={!input.trim() || isLoading}
-                                className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-medium"
+                                className="px-6 py-3 bg-linear-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-medium"
                             >
                                 <Send className="w-4 h-4" />
                                 Send

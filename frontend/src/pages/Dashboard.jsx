@@ -29,6 +29,8 @@ const Dashboard = () => {
         loading: loadingProfile, 
         setHasPhysicalProfile, 
         setHasWorkoutPreferences,
+        setHasDietPlan,
+        setHasWorkoutPlan,
         refreshProfileStatus 
     } = useProfile();
 
@@ -130,6 +132,7 @@ const Dashboard = () => {
                            isEmbedded={true} 
                            onGenerateStart={() => setIsUpdating(true)}
                            onGenerateEnd={() => setIsUpdating(false)}
+                           onPlanGenerated={() => setHasDietPlan(true)}
                        />;
             case 'workout-plan':
                 if (loadingProfile) return <div>Loading...</div>;
@@ -149,6 +152,7 @@ const Dashboard = () => {
                            isEmbedded={true}
                            onGenerateStart={() => setIsUpdating(true)}
                            onGenerateEnd={() => setIsUpdating(false)}
+                           onPlanGenerated={() => setHasWorkoutPlan(true)}
                        />;
             case 'ai-coach':
                 return <AICoach />;
@@ -204,7 +208,7 @@ const Dashboard = () => {
         <div className="flex h-screen bg-gray-50">
             {/* Global Blocking Overlay */}
             {isUpdating && (
-                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[200] flex flex-col items-center justify-center p-4">
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-200 flex flex-col items-center justify-center p-4">
                     <div className="bg-white rounded-2xl p-8 max-w-md w-full text-center shadow-2xl transform scale-100 transition-all">
                         <div className="w-16 h-16 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
                         <h3 className="text-2xl font-bold text-gray-900 mb-2">Generating Plan</h3>
@@ -223,7 +227,7 @@ const Dashboard = () => {
                         alt="FitTrack Logo" 
                         className="h-8 w-auto object-contain rounded-md" 
                      />
-                     <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">
+                     <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-linear-to-r from-indigo-600 to-purple-600">
                         FitTrack
                     </h1>
                 </div>
@@ -309,10 +313,10 @@ const Dashboard = () => {
 
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3 px-2">
-                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold shadow-md">
+                                <div className="w-10 h-10 rounded-full bg-linear-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold shadow-md">
                                     {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
                                 </div>
-                                <div className="flex flex-col overflow-hidden max-w-[100px]">
+                                <div className="flex flex-col overflow-hidden max-w-25">
                                     <span className="text-sm font-bold text-gray-900 truncate">{user?.name}</span>
                                     <span className="text-xs text-gray-500 truncate">{user?.email}</span>
                                 </div>

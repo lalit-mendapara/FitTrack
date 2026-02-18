@@ -361,7 +361,7 @@ const Chatbot = () => {
             {/* 1. Floating Action Button (Visible when chat is closed) */}
             <button
                 onClick={toggleChat}
-                className={`fixed bottom-6 right-6 z-40 group bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white p-4 rounded-full shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:scale-110 flex items-center justify-center ${isOpen ? 'scale-0 opacity-0' : 'scale-100 opacity-100'}`}
+                className={`fixed bottom-6 right-6 z-40 group bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white p-4 rounded-full shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:scale-110 flex items-center justify-center ${isOpen ? 'scale-0 opacity-0' : 'scale-100 opacity-100'}`}
                 aria-label="Open Chat"
             >
                 <div className="relative">
@@ -383,7 +383,7 @@ const Chatbot = () => {
                     inset-0 w-full h-full 
                     
                     /* Desktop: LEFT Sidebar */
-                    md:top-0 md:left-0 md:right-auto md:bottom-0 md:w-[450px] md:h-full md:border-r md:border-gray-200 dark:md:border-gray-800
+                    md:top-0 md:left-0 md:right-auto md:bottom-0 md:w-112.5 md:h-full md:border-r md:border-gray-200 dark:md:border-gray-800
                 `}
             >
                 {/* Header */}
@@ -428,7 +428,7 @@ const Chatbot = () => {
 
                 {/* History Popover */}
                 {showHistory && (
-                    <div className="absolute top-[70px] right-2 left-2 md:left-auto md:right-[-320px] bg-white dark:bg-gray-800 shadow-xl rounded-xl border border-gray-100 dark:border-gray-700 w-auto md:w-80 max-h-[400px] overflow-hidden flex flex-col z-20 animate-in fade-in slide-in-from-top-2">
+                    <div className="absolute top-17.5 right-2 left-2 md:left-auto md:-right-80 bg-white dark:bg-gray-800 shadow-xl rounded-xl border border-gray-100 dark:border-gray-700 w-auto md:w-80 max-h-100 overflow-hidden flex flex-col z-20 animate-in fade-in slide-in-from-top-2">
                         <div className="p-3 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-900">
                              <h4 className="font-bold text-gray-700 dark:text-gray-200 text-sm flex items-center gap-2">
                                 <History size={14} /> Previous Sessions
@@ -522,7 +522,7 @@ const Chatbot = () => {
                                                     
                                                     {/* Dropdown Menu */}
                                                     {activeMenu === s.session_id && (
-                                                        <div className="absolute right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 z-30 min-w-[120px] animate-in fade-in slide-in-from-top-1">
+                                                        <div className="absolute right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 z-30 min-w-30 animate-in fade-in slide-in-from-top-1">
                                                             <button
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();

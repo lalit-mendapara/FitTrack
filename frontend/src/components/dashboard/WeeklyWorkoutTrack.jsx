@@ -70,7 +70,7 @@ const WeeklyWorkoutTrack = () => {
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 h-full">
             <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-3">
-                    <div className="p-2.5 bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl text-white shadow-lg shadow-violet-200">
+                    <div className="p-2.5 bg-linear-to-br from-violet-500 to-purple-600 rounded-xl text-white shadow-lg shadow-violet-200">
                         <Dumbbell size={22} />
                     </div>
                     <div>

@@ -96,7 +96,7 @@ const FeastDeactivePreviewCard = ({ preview, onConfirm, onCancel, loading }) => 
            <button
              onClick={onConfirm}
              disabled={loading}
-             className="flex-[2] py-2 text-sm bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg shadow-md transition-colors"
+             className="flex-2 py-2 text-sm bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg shadow-md transition-colors"
            >
              {loading ? 'Cancelling...' : 'Confirm Cancel'}
            </button>

@@ -115,7 +115,7 @@ const TodayWorkoutLog = ({ onDataLoaded }) => {
             >
                 <div className="flex items-center gap-3">
                     <div 
-                        className="p-2.5 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl text-white shadow-lg shadow-indigo-200 cursor-pointer"
+                        className="p-2.5 bg-linear-to-br from-indigo-500 to-purple-600 rounded-xl text-white shadow-lg shadow-indigo-200 cursor-pointer"
                         onClick={() => {
                             if (window.innerWidth < 768) setIsExpanded(!isExpanded);
                         }}
@@ -225,7 +225,7 @@ const TodayWorkoutLog = ({ onDataLoaded }) => {
                                         </div>
                                     </div>
 
-                                    <div className="flex-1 min-h-[3rem]">
+                                    <div className="flex-1 min-h-12">
                                         <h4 className="font-semibold text-gray-800 text-sm line-clamp-3 mb-2 leading-snug" title={workout.name}>
                                             {workout.name}
                                         </h4>

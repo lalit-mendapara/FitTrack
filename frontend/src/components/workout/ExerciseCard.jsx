@@ -117,14 +117,14 @@ const ExerciseCard = ({ exercise, initialLogId = null, targetDate = null, onLogU
           </div>
 
           {/* Collapsible Instructions */}
-          <div className={`transition-all duration-300 overflow-hidden ${isExpanded ? 'opacity-100 max-h-[500px] mb-4' : 'opacity-0 max-h-0 mb-0 md:opacity-100 md:max-h-[500px] md:mb-4'}`}>
+          <div className={`transition-all duration-300 overflow-hidden ${isExpanded ? 'opacity-100 max-h-125 mb-4' : 'opacity-0 max-h-0 mb-0 md:opacity-100 md:max-h-125 md:mb-4'}`}>
               <div className="bg-indigo-50/50 rounded-xl p-3 border border-indigo-100/50">
                   {exercise.instructions ? (
                       Array.isArray(exercise.instructions) ? (
                         <ul className="space-y-2">
                             {exercise.instructions.map((point, idx) => (
                                 <li key={idx} className="flex gap-2 text-xs text-gray-600 leading-relaxed font-medium">
-                                    <span className="flex-shrink-0 w-1 h-1 rounded-full bg-indigo-400 mt-1.5"></span>
+                                    <span className="shrink-0 w-1 h-1 rounded-full bg-indigo-400 mt-1.5"></span>
                                     {point}
                                 </li>
                             ))}

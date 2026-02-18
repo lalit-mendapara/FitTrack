@@ -121,7 +121,7 @@ const MealCard = ({ meal, loggedMeals, onLogUpdate, socialEvent, onPlanRefresh }
 
     
     return (
-      <div className="bg-white rounded-[2rem] shadow-lg border border-gray-100/50 overflow-hidden hover:shadow-2xl hover:border-indigo-100 transition-all duration-300 group h-full flex flex-col">
+      <div className="bg-white rounded-4xl shadow-lg border border-gray-100/50 overflow-hidden hover:shadow-2xl hover:border-indigo-100 transition-all duration-300 group h-full flex flex-col">
         <div className="p-6 flex-1 flex flex-col relative">
             {/* Toggle Button for Mobile */}
             <button 
@@ -239,7 +239,7 @@ const MealCard = ({ meal, loggedMeals, onLogUpdate, socialEvent, onPlanRefresh }
           )}
 
           {/* Collapsible Content */}
-          <div className={`transition-all duration-300 overflow-hidden ${isExpanded ? 'opacity-100 max-h-[1000px]' : 'opacity-0 max-h-0 md:opacity-100 md:max-h-[1000px]'}`}>
+          <div className={`transition-all duration-300 overflow-hidden ${isExpanded ? 'opacity-100 max-h-250' : 'opacity-0 max-h-0 md:opacity-100 md:max-h-250'}`}>
               <div className="flex flex-col sm:grid sm:grid-cols-5 gap-4 mb-5">
                  <div className="w-full sm:col-span-2 bg-gray-50/80 rounded-2xl flex items-center justify-center p-1">
                      <MacroChart 

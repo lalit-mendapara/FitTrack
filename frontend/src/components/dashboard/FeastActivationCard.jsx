@@ -204,7 +204,7 @@ const FeastActivationCard = ({ onStatusChange }) => {
   // EXPANDED / ACTIVE STATE
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-in slide-in-from-top-2">
-      <div className="p-5 border-b border-gray-50 bg-gradient-to-r from-purple-50 to-white">
+      <div className="p-5 border-b border-gray-50 bg-linear-to-r from-purple-50 to-white">
         <div className="flex justify-between items-center">
           <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
             🎉 Feast Mode

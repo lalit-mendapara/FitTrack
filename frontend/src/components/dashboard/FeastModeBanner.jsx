@@ -30,7 +30,7 @@ const FeastModeBanner = ({ event, onUpdate }) => {
     // Status: BANKING (Reducing calories)
     if (!isFeastDay) {
         return (
-            <div className="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-2xl p-0.5 shadow-lg mb-6 animate-in fade-in slide-in-from-top-4">
+            <div className="bg-linear-to-r from-purple-600 to-indigo-600 rounded-2xl p-0.5 shadow-lg mb-6 animate-in fade-in slide-in-from-top-4">
                 <div className="bg-white rounded-[14px] p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="flex items-start gap-4">
                         <div className="p-2 bg-indigo-50 rounded-xl">
@@ -78,7 +78,7 @@ const FeastModeBanner = ({ event, onUpdate }) => {
 
     // Status: FEAST DAY (High calories!)
     return (
-        <div className="bg-gradient-to-r from-amber-400 via-orange-500 to-red-500 rounded-2xl p-0.5 shadow-lg mb-6 animate-pulse-slow">
+        <div className="bg-linear-to-r from-amber-400 via-orange-500 to-red-500 rounded-2xl p-0.5 shadow-lg mb-6 animate-pulse-slow">
             <div className="bg-white/95 backdrop-blur-sm rounded-[14px] p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 relative overflow-hidden">
                 <div className="absolute top-0 right-0 -mr-4 -mt-4 opacity-10 transform rotate-12">
                     <Utensils size={120} />
@@ -100,7 +100,7 @@ const FeastModeBanner = ({ event, onUpdate }) => {
                 </div>
                 
                 <div className="flex items-center gap-3 relative z-10">
-                    <div className="bg-gradient-to-r from-orange-500 to-red-500 text-white px-6 py-2 rounded-xl shadow-md transform hover:scale-105 transition-transform font-bold text-center">
+                    <div className="bg-linear-to-r from-orange-500 to-red-500 text-white px-6 py-2 rounded-xl shadow-md transform hover:scale-105 transition-transform font-bold text-center">
                         Enjoy! 🍽️
                     </div>
                      <button 

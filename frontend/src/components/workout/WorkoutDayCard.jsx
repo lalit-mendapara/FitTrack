@@ -16,7 +16,7 @@ const WorkoutDayCard = ({ dayPlan, onSeeExercises, date }) => {
   const isFeastMode = dayPlan.workout_split?.toLowerCase().includes('feast') || dayPlan.workout_name?.toLowerCase().includes('feast');
 
   return (
-    <div className={`bg-white rounded-[2rem] shadow-xl border overflow-hidden hover:shadow-2xl transition-all duration-300 group relative 
+    <div className={`bg-white rounded-4xl shadow-xl border overflow-hidden hover:shadow-2xl transition-all duration-300 group relative 
         ${isFeastMode ? 'border-purple-200 ring-2 ring-purple-100 shadow-purple-100' : isToday ? 'border-indigo-200 ring-2 ring-indigo-100' : 'border-gray-100/50'}`}>
       <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:opacity-10 transition-opacity">
         <Dumbbell size={150} className={`transform rotate-12 ${isFeastMode ? 'text-purple-500' : ''}`} />
@@ -27,7 +27,7 @@ const WorkoutDayCard = ({ dayPlan, onSeeExercises, date }) => {
             <div className="flex items-start justify-between">
                  <div className="flex items-center gap-3">
                     <div className={`w-16 h-16 rounded-2xl flex flex-col items-center justify-center text-white shadow-lg shrink-0
-                        ${isFeastMode ? 'bg-gradient-to-br from-purple-500 to-indigo-600 shadow-purple-200' : 'bg-gradient-to-br from-indigo-500 to-purple-600 shadow-indigo-200'}`}>
+                        ${isFeastMode ? 'bg-linear-to-br from-purple-500 to-indigo-600 shadow-purple-200' : 'bg-linear-to-br from-indigo-500 to-purple-600 shadow-indigo-200'}`}>
                         {/* Display Date Day */}
                         <span className="text-xs font-medium opacity-80 uppercase tracking-widest">{dayPlan.day_name.substring(0, 3)}</span>
                         <span className="text-2xl font-black leading-none">{dateDisplay.split(' ')[1]}</span>

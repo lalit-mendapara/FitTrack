@@ -103,7 +103,7 @@ const TodayDietLog = ({ onDataLoaded }) => {
             >
                 <div className="flex items-center gap-3">
                     <div 
-                        className="p-2.5 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl text-white shadow-lg shadow-emerald-200 cursor-pointer"
+                        className="p-2.5 bg-linear-to-br from-emerald-500 to-teal-600 rounded-xl text-white shadow-lg shadow-emerald-200 cursor-pointer"
                         onClick={() => {
                             if (window.innerWidth < 768) setIsExpanded(!isExpanded);
                         }}
@@ -183,7 +183,7 @@ const TodayDietLog = ({ onDataLoaded }) => {
                     {meals.map((meal) => (
                         <div 
                             key={meal.id}
-                            className="flex items-center justify-between p-4 bg-gradient-to-r from-gray-50 to-white rounded-xl border border-gray-100 hover:shadow-md hover:border-emerald-100 transition-all duration-300 group"
+                            className="flex items-center justify-between p-4 bg-linear-to-r from-gray-50 to-white rounded-xl border border-gray-100 hover:shadow-md hover:border-emerald-100 transition-all duration-300 group"
                         >
                             <div className="flex items-center gap-4">
                                 <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600 group-hover:bg-emerald-100 transition-colors">

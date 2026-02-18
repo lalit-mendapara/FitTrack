@@ -18,7 +18,7 @@ const WorkoutSessionModal = ({ isOpen, onClose, initialDuration = 60, onSave, is
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden relative animate-in zoom-in-95 duration-300">
                 {/* Header Decoration */}
-                <div className="absolute top-0 inset-x-0 h-2 bg-gradient-to-r from-emerald-400 to-teal-500"></div>
+                <div className="absolute top-0 inset-x-0 h-2 bg-linear-to-r from-emerald-400 to-teal-500"></div>
 
                 <div className="p-8 text-center">
                     {/* Success Icon */}
@@ -70,7 +70,7 @@ const WorkoutSessionModal = ({ isOpen, onClose, initialDuration = 60, onSave, is
                         <button
                             onClick={handleSave}
                             disabled={isSaving}
-                            className="flex-[2] py-3.5 px-4 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl shadow-lg shadow-emerald-200 transition-all transform active:scale-95 flex items-center justify-center gap-2"
+                            className="flex-2 py-3.5 px-4 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl shadow-lg shadow-emerald-200 transition-all transform active:scale-95 flex items-center justify-center gap-2"
                         >
                             {isSaving ? (
                                 <>

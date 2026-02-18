@@ -88,9 +88,11 @@ docker exec -it diet_planner_db psql -U lalit -d fitness_track -f /backup.sql
 ### Database Operations
 
 ```bash
-# Database tables are auto-created on startup via SQLAlchemy
-# See backend/app/main.py: Base.metadata.create_all(bind=engine)
-# No manual migrations needed - schema is defined in models
+# Database migrations use Alembic (auto-runs on startup, falls back to create_all)
+# See backend/app/main.py: run_migrations()
+cd backend
+alembic upgrade head                      # Apply pending migrations
+alembic revision --autogenerate -m "msg"  # Generate migration from model changes
 
 # Access PostgreSQL (Docker)
 docker exec -it diet_planner_db psql -U lalit -d fitness_track
@@ -120,9 +122,11 @@ backend/app/
 │   ├── meal_plan.py  # Meal plan generation and retrieval
 │   ├── workout_plan.py
 │   ├── chat.py       # AI Coach chat interface
-│   ├── tracking.py   # Meal/workout tracking (modified recently)
+│   ├── tracking.py   # Meal/workout tracking
 │   ├── notifications.py
-│   └── social_events.py
+│   ├── social_events.py
+│   ├── feast_mode.py  # Feast mode (social events with adjusted meals)
+│   └── workout_preferences.py
 ├── models/           # SQLAlchemy database models
 ├── schemas/          # Pydantic validation schemas (request/response)
 ├── crud/             # Database operations (Create, Read, Update, Delete)
@@ -212,7 +216,7 @@ The application supports multiple LLM providers via environment configuration:
 
 ### Database Schema
 
-Tables are auto-created on startup via SQLAlchemy `Base.metadata.create_all()`. Key models:
+Alembic migrations run automatically on startup (falls back to `create_all` for new models not yet in Alembic). Key models:
 - `User`: Authentication ([backend/app/models/user.py](backend/app/models/user.py))
 - `UserProfile`: Demographics, goals, preferences ([backend/app/models/user_profile.py](backend/app/models/user_profile.py))
 - `MealPlan`: Current active meal plan
@@ -275,9 +279,11 @@ Tables are auto-created on startup via SQLAlchemy `Base.metadata.create_all()`. 
 
 ### Frontend API Calls
 
-- All backend requests go through Vite proxy: `/api/*` → `http://backend:8000/*` (path rewritten)
-- Axios instance in `frontend/src/api/` handles base URL and auth headers
+- All backend requests go through Vite proxy: `/api/*` → `http://backend:8000/*` (path rewritten via `vite.config.js`)
+- **Local dev gotcha**: The proxy target is `http://backend:8000` (Docker service name). For local dev without Docker, change to `http://localhost:8000`
+- Axios instance in `frontend/src/api/axios.js` sets `baseURL: '/api'` and adds Bearer token from `localStorage('diet_planner_token')`
 - AuthContext provides `login`, `logout`, `user` state globally
+- 401/403 responses dispatch `auth:logout` custom event globally
 
 ## Testing
 
@@ -295,16 +301,6 @@ db = SessionLocal()
 # LLM tests may take time and cost money - mock when possible
 # Integration tests assume Ollama is running
 ```
-
-## Git Recent Changes
-
-Recent commits show:
-- Tracking API modifications ([backend/app/api/tracking.py](backend/app/api/tracking.py)) - check git diff for latest changes
-- Feast mode feature added and deactivated
-- Dashboard UI enhancements
-- Scheduler timezone logic fixes
-
-When making changes to tracking, meal plans, or scheduling, review recent commits for context.
 
 ## CORS Configuration
 

@@ -57,7 +57,7 @@ const Profile = ({ isEmbedded = false, onProfileComplete, onViewDietPlan, onUpda
       {!isEmbedded && <Navbar />}
       
       {/* Header Section */}
-      <div className={`relative ${isEmbedded ? 'pt-10 pb-10 rounded-3xl mx-6 ' : 'pt-32 pb-20'} bg-gradient-to-r from-indigo-700 to-purple-800 text-white ${isEmbedded ? '' : 'mt-16'}`}>
+      <div className={`relative ${isEmbedded ? 'pt-10 pb-10 rounded-3xl mx-6 ' : 'pt-32 pb-20'} bg-linear-to-r from-indigo-700 to-purple-800 text-white ${isEmbedded ? '' : 'mt-16'}`}>
         <div className={`container mx-auto ${isEmbedded ? 'px-4' : 'px-6'}`}>
           <div className="flex flex-col md:flex-row items-center gap-8">
             <div className="relative">

@@ -120,7 +120,7 @@ const WorkoutCalendar = ({ isLocked = false, currentWeekOffset = 0, onWeekChange
                         <ChevronLeft className="w-4 h-4" />
                     </button>
                     
-                    <div className="px-2 text-center flex-1 sm:flex-none sm:min-w-[140px]">
+                    <div className="px-2 text-center flex-1 sm:flex-none sm:min-w-35">
                         <span className="text-sm font-semibold text-slate-700 block">
                             Week {currentWeek} of {totalWeeks}
                         </span>
@@ -143,7 +143,7 @@ const WorkoutCalendar = ({ isLocked = false, currentWeekOffset = 0, onWeekChange
 
             {/* Calendar Grid */}
             <div className="overflow-x-auto pb-2 -mx-4 px-4 sm:overflow-visible sm:mx-0 sm:px-0 scrollbar-hide">
-                <div className="grid grid-cols-7 gap-3 mb-6 min-w-[1050px] sm:min-w-0">
+                <div className="grid grid-cols-7 gap-3 mb-6 min-w-262.5 sm:min-w-0">
                     {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
                         <div key={day} className="text-center text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
                             {day}
@@ -205,7 +205,7 @@ const WorkoutCalendar = ({ isLocked = false, currentWeekOffset = 0, onWeekChange
                                     key={index}
                                     className={`
                                         relative group h-40 rounded-xl p-3 flex flex-col justify-between transition-all duration-300
-                                        ${isRest ? 'bg-slate-50 border border-slate-100' : `bg-gradient-to-br ${colorClass} shadow-md shadow-indigo-500/10 hover:shadow-xl hover:shadow-indigo-500/20 hover:-translate-y-1 text-white`}
+                                        ${isRest ? 'bg-slate-50 border border-slate-100' : `bg-linear-to-br ${colorClass} shadow-md shadow-indigo-500/10 hover:shadow-xl hover:shadow-indigo-500/20 hover:-translate-y-1 text-white`}
                                         ${borderColor} ${!isRest && (day.completed || isSkipped || isIncomplete) ? 'ring-2 ring-white ring-offset-2 ring-offset-slate-50' : ''}
                                     `}
                                 >

@@ -72,9 +72,9 @@ def get_user_local_time(user: User):
 
 def _future_log_block_message(current_date: DateType, attempted_date: DateType) -> str:
     return (
-        f"You cannot log exercises for future dates. "
-        f"Current date: {current_date.isoformat()}. "
-        f"Selected date: {attempted_date.isoformat()}."
+        f"You cannot log exercises for Upcoming Days. "
+        f"Today's Date: {current_date.isoformat()}. "
+        f"Workout Date: {attempted_date.isoformat()}."
     )
 
 
