@@ -53,7 +53,7 @@ const Login = () => {
       });
       
       
-      toast.success('Login Successful! Welcome back.');
+      toast.success('Login Successful! Welcome.');
       
       // Delay redirect by 2 seconds
       setTimeout(() => {
@@ -90,7 +90,7 @@ const Login = () => {
             <span className="text-white font-bold text-xl">F</span>
           </div>
           <h2 className="mt-2 text-center text-3xl font-extrabold text-white">
-            Welcome back
+            Welcome
           </h2>
           <p className="mt-2 text-center text-sm text-gray-200">
             Login to access your personalized plan

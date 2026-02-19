@@ -18,15 +18,326 @@ const Signup = () => {
   
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [emailError, setEmailError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordStrength, setPasswordStrength] = useState('');
+  const [dateError, setDateError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+
+  // Allowed special characters for password
+  const allowedSpecialChars = '!@#$%&';
+
+  // Function to convert text to camel case (proper case)
+  const toCamelCase = (str) => {
+    return str
+      .toLowerCase()
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  };
+
+  // Email validation function with detailed error messages
+  const validateEmail = (email) => {
+    if (!email) {
+      return '';
+    }
+
+    // Check for empty email
+    if (email.trim() === '') {
+      return '';
+    }
+
+    // Check for basic email structure
+    if (!email.includes('@')) {
+      return 'Email must contain @ symbol';
+    }
+
+    // Check for multiple @ symbols
+    if (email.split('@').length > 2) {
+      return 'Email can only contain one @ symbol';
+    }
+
+    // Check if @ is at the beginning or end
+    if (email.startsWith('@') || email.endsWith('@')) {
+      return '@ symbol cannot be at the beginning or end';
+    }
+
+    const [localPart, domain] = email.split('@');
+
+    // Validate local part (before @)
+    if (localPart.length === 0) {
+      return 'Please enter text before @ symbol';
+    }
+
+    if (localPart.length > 64) {
+      return 'Text before @ is too long (max 64 characters)';
+    }
+
+    // Check for invalid characters in local part
+    const localPartRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+$/;
+    if (!localPartRegex.test(localPart)) {
+      return 'Invalid characters in email address';
+    }
+
+    // Check for consecutive dots in local part
+    if (localPart.includes('..')) {
+      return 'Email cannot contain consecutive dots';
+    }
+
+    // Check if local part starts or ends with dot
+    if (localPart.startsWith('.') || localPart.endsWith('.')) {
+      return 'Email cannot start or end with a dot';
+    }
+
+    // Validate domain part (after @)
+    if (domain.length === 0) {
+      return 'Please enter domain after @ symbol';
+    }
+
+    // Check for domain structure
+    if (!domain.includes('.')) {
+      return 'Domain must contain a dot (e.g., example.com)';
+    }
+
+    // Check for domain format
+    const domainParts = domain.split('.');
+    if (domainParts.length < 2) {
+      return 'Invalid domain format';
+    }
+
+    // Check each domain part
+    for (const part of domainParts) {
+      if (part.length === 0) {
+        return 'Domain cannot have empty parts';
+      }
+      
+      // Check for invalid characters in domain
+      const domainPartRegex = /^[a-zA-Z0-9-]+$/;
+      if (!domainPartRegex.test(part)) {
+        return 'Domain contains invalid characters';
+      }
+
+      // Check if domain part starts or ends with hyphen
+      if (part.startsWith('-') || part.endsWith('-')) {
+        return 'Domain parts cannot start or end with hyphen';
+      }
+    }
+
+    // Check top-level domain (last part)
+    const tld = domainParts[domainParts.length - 1];
+    if (tld.length < 2) {
+      return 'Top-level domain must be at least 2 characters';
+    }
+
+    if (tld.length > 63) {
+      return 'Top-level domain is too long';
+    }
+
+    // Check overall email length
+    if (email.length > 254) {
+      return 'Email address is too long';
+    }
+
+    return ''; // No error
+  };
+
+  // Password validation function with detailed feedback
+  const validatePassword = (password) => {
+    if (!password) {
+      return { error: '', strength: '', requirements: [] };
+    }
+
+    const requirements = [];
+    let strength = 0;
+    let error = '';
+
+    // Check minimum length
+    if (password.length < 8) {
+      requirements.push({
+        met: false,
+        text: 'At least 8 characters'
+      });
+      error = 'Password must be at least 8 characters long';
+    } else {
+      requirements.push({
+        met: true,
+        text: 'At least 8 characters'
+      });
+      strength += 1;
+    }
+
+    // Check for uppercase letter
+    if (!/[A-Z]/.test(password)) {
+      requirements.push({
+        met: false,
+        text: 'One uppercase letter (A-Z)'
+      });
+    } else {
+      requirements.push({
+        met: true,
+        text: 'One uppercase letter (A-Z)'
+      });
+      strength += 1;
+    }
+
+    // Check for lowercase letter
+    if (!/[a-z]/.test(password)) {
+      requirements.push({
+        met: false,
+        text: 'One lowercase letter (a-z)'
+      });
+    } else {
+      requirements.push({
+        met: true,
+        text: 'One lowercase letter (a-z)'
+      });
+      strength += 1;
+    }
+
+    // Check for number
+    if (!/[0-9]/.test(password)) {
+      requirements.push({
+        met: false,
+        text: 'One number (0-9)'
+      });
+    } else {
+      requirements.push({
+        met: true,
+        text: 'One number (0-9)'
+      });
+      strength += 1;
+    }
+
+    // Check for special character
+    const specialCharRegex = new RegExp(`[${allowedSpecialChars.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}]`);
+    if (!specialCharRegex.test(password)) {
+      requirements.push({
+        met: false,
+        text: `One special character: ${allowedSpecialChars}`
+      });
+    } else {
+      requirements.push({
+        met: true,
+        text: `One special character: ${allowedSpecialChars}`
+      });
+      strength += 1;
+    }
+
+    // Check for invalid characters
+    const validCharRegex = /^[a-zA-Z0-9!@#$%^&*()_+\-=\[\]{}|;:,.<>?]+$/;
+    if (!validCharRegex.test(password)) {
+      const invalidChars = password.match(/[^a-zA-Z0-9!@#$%^&*()_+\-=\[\]{}|;:,.<>?]/g);
+      if (invalidChars) {
+        error = `Invalid characters found: ${[...new Set(invalidChars)].join(', ')}. Only use: letters, numbers, and ${allowedSpecialChars}`;
+      }
+    }
+
+    // Determine strength level
+    let strengthText = '';
+    if (password.length > 0) {
+      if (strength <= 2) strengthText = 'Weak';
+      else if (strength === 3) strengthText = 'Fair';
+      else if (strength === 4) strengthText = 'Good';
+      else if (strength === 5) strengthText = 'Strong';
+    }
+
+    // If all requirements are met and no invalid characters, clear error
+    if (requirements.every(req => req.met) && !error) {
+      error = '';
+    }
+
+    return { error, strength: strengthText, requirements };
+  };
+
+  // Date validation function for age and future date checking
+  const validateDate = (dateString) => {
+    if (!dateString) {
+      return '';
+    }
+
+    const selectedDate = new Date(dateString);
+    const today = new Date();
+    
+    // Clear time part for accurate comparison
+    today.setHours(0, 0, 0, 0);
+    selectedDate.setHours(0, 0, 0, 0);
+
+    // Check if date is in the future
+    if (selectedDate > today) {
+      return 'Cannot select a future date';
+    }
+
+    // Calculate age
+    let age = today.getFullYear() - selectedDate.getFullYear();
+    const monthDiff = today.getMonth() - selectedDate.getMonth();
+    const dayDiff = today.getDate() - selectedDate.getDate();
+
+    // Adjust age if birthday hasn't occurred this year yet
+    if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) {
+      age--;
+    }
+
+    // Check if user is under 15 years old
+    if (age < 15) {
+      return `You are not eligible to signup. You are under 15 years old (${age} years)`;
+    }
+
+    return ''; // No error
+  };
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    
+    // Apply camel case conversion to name field
+    if (name === 'name') {
+      setFormData({ ...formData, [name]: toCamelCase(value) });
+    } else if (name === 'email') {
+      setFormData({ ...formData, [name]: value });
+      // Validate email in real-time
+      setEmailError(validateEmail(value));
+    } else if (name === 'password') {
+      setFormData({ ...formData, [name]: value });
+      // Validate password in real-time
+      const passwordValidation = validatePassword(value);
+      setPasswordError(passwordValidation.error);
+      setPasswordStrength(passwordValidation.strength);
+    } else if (name === 'dob') {
+      setFormData({ ...formData, [name]: value });
+      // Validate date in real-time
+      setDateError(validateDate(value));
+    } else {
+      setFormData({ ...formData, [name]: value });
+    }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
     setError('');
+
+    // Validate email before submission
+    const emailValidationError = validateEmail(formData.email);
+    if (emailValidationError) {
+      setEmailError(emailValidationError);
+      setIsLoading(false);
+      return;
+    }
+
+    // Validate password before submission
+    const passwordValidation = validatePassword(formData.password);
+    if (passwordValidation.error) {
+      setPasswordError(passwordValidation.error);
+      setIsLoading(false);
+      return;
+    }
+
+    // Validate date before submission
+    const dateValidationError = validateDate(formData.dob);
+    if (dateValidationError) {
+      setDateError(dateValidationError);
+      setIsLoading(false);
+      return;
+    }
 
     try {
       const response = await api.post('/users/signup', formData);
@@ -107,24 +418,120 @@ const Signup = () => {
                 name="email"
                 type="email"
                 required
-                className="appearance-none relative block w-full px-4 py-3 border border-gray-300/30 placeholder-gray-300 text-white bg-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm transition-all"
+                className={`appearance-none relative block w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:z-10 sm:text-sm transition-all ${
+                  emailError 
+                    ? 'border-red-500 bg-red-50/10 text-red-100 focus:border-red-500' 
+                    : 'border-gray-300/30 placeholder-gray-300 text-white bg-white/10 focus:border-indigo-500'
+                }`}
                 placeholder="Email address"
                 value={formData.email}
                 onChange={handleChange}
               />
+              {emailError && (
+                <div className="mt-2 text-xs text-red-300 flex items-center">
+                  <svg className="w-4 h-4 mr-1 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                  {emailError}
+                </div>
+              )}
             </div>
             <div>
               <label htmlFor="password" className="sr-only">Password</label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                required
-                className="appearance-none relative block w-full px-4 py-3 border border-gray-300/30 placeholder-gray-300 text-white bg-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm transition-all"
-                placeholder="Password"
-                value={formData.password}
-                onChange={handleChange}
-              />
+              <div className="relative">
+                <input
+                  id="password"
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  required
+                  className={`appearance-none relative block w-full px-4 py-3 pr-12 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:z-10 sm:text-sm transition-all ${
+                    passwordError 
+                      ? 'border-red-500 bg-red-50/10 text-red-100 focus:border-red-500' 
+                      : 'border-gray-300/30 placeholder-gray-300 text-white bg-white/10 focus:border-indigo-500'
+                  }`}
+                  placeholder="Password"
+                  value={formData.password}
+                  onChange={handleChange}
+                />
+                <button
+                  type="button"
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-300 focus:outline-none"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? (
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                    </svg>
+                  ) : (
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+              
+              {/* Password strength indicator */}
+              {passwordStrength && (
+                <div className="mt-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs text-gray-300">Password Strength:</span>
+                    <span className={`text-xs font-medium ${
+                      passwordStrength === 'Weak' ? 'text-red-400' :
+                      passwordStrength === 'Fair' ? 'text-yellow-400' :
+                      passwordStrength === 'Good' ? 'text-blue-400' :
+                      'text-green-400'
+                    }`}>{passwordStrength}</span>
+                  </div>
+                  <div className="w-full bg-gray-700 rounded-full h-1.5">
+                    <div 
+                      className={`h-1.5 rounded-full transition-all duration-300 ${
+                        passwordStrength === 'Weak' ? 'bg-red-400 w-1/4' :
+                        passwordStrength === 'Fair' ? 'bg-yellow-400 w-2/4' :
+                        passwordStrength === 'Good' ? 'bg-blue-400 w-3/4' :
+                        'bg-green-400 w-full'
+                      }`}
+                    ></div>
+                  </div>
+                </div>
+              )}
+
+              {/* Password requirements */}
+              {formData.password && (
+                <div className="mt-3 space-y-1">
+                  <div className="text-xs text-gray-300 mb-2">Password must contain:</div>
+                  {validatePassword(formData.password).requirements.map((req, index) => (
+                    <div key={index} className="flex items-center text-xs">
+                      <svg 
+                        className={`w-3 h-3 mr-2 ${
+                          req.met ? 'text-green-400' : 'text-gray-500'
+                        }`} 
+                        fill="currentColor" 
+                        viewBox="0 0 20 20"
+                      >
+                        {req.met ? (
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        ) : (
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                        )}
+                      </svg>
+                      <span className={req.met ? 'text-green-400' : 'text-gray-400'}>
+                        {req.text}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Password error message */}
+              {passwordError && (
+                <div className="mt-2 text-xs text-red-300 flex items-center">
+                  <svg className="w-4 h-4 mr-1 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                  {passwordError}
+                </div>
+              )}
             </div>
             
             <div className="grid grid-cols-2 gap-4">
@@ -135,10 +542,23 @@ const Signup = () => {
                   name="dob"
                   type="date"
                   required
-                  className="appearance-none relative block w-full px-4 py-3 border border-gray-300/30 text-white bg-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm transition-all"
+                  max={new Date().toISOString().split('T')[0]} // Prevent future date selection
+                  className={`appearance-none relative block w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:z-10 sm:text-sm transition-all ${
+                    dateError 
+                      ? 'border-red-500 bg-red-50/10 text-red-100 focus:border-red-500' 
+                      : 'border-gray-300/30 text-white bg-white/10 focus:border-indigo-500'
+                  } [&>option]:text-black`}
                   value={formData.dob}
                   onChange={handleChange}
                 />
+                {dateError && (
+                  <div className="mt-2 text-xs text-red-300 flex items-center">
+                    <svg className="w-4 h-4 mr-1 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                    {dateError}
+                  </div>
+                )}
               </div>
               <div>
                 <label htmlFor="gender" className="sr-only">Gender</label>

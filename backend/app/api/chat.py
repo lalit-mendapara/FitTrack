@@ -105,6 +105,7 @@ async def chat_with_coach(
             user_id=user_id,
             role="assistant",
             content=response_data["content"],
+            custom_content=response_data.get("custom_content"),
             session_id=session_id
         ))
         
@@ -208,16 +209,18 @@ def get_chat_history(
         ChatHistory.session_id == session_id
     ).order_by(ChatHistory.id.desc()).limit(50).all()
     
-    return [{"role": msg.role, "content": msg.content, "timestamp": msg.created_at} for msg in reversed(history)]
+    return [{"id": msg.id, "role": msg.role, "content": msg.content, "custom_content": msg.custom_content, "timestamp": msg.created_at} for msg in reversed(history)]
 
 class AddHistoryRequest(BaseModel):
     session_id: str
     role: str # user, assistant
     content: str
+    custom_content: Optional[dict] = None
     
 @router.post("/chat/history")
 def add_chat_history(
     request: AddHistoryRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
@@ -230,19 +233,37 @@ def add_chat_history(
         ChatSession.user_id == current_user.id
     ).first()
     
+    # Auto-create session if it doesn't exist (fixing 404 for client-side triggered events)
     if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+        session = ChatSession(
+            user_id=current_user.id,
+            session_id=request.session_id,
+            title="New Chat"
+        )
+        db.add(session)
+        db.commit() # Commit to get ID/persist
+        db.refresh(session)
         
     history = ChatHistory(
         user_id=current_user.id,
         session_id=request.session_id,
         role=request.role,
-        content=request.content
+        content=request.content,
+        custom_content=request.custom_content
     )
     db.add(history)
     session.updated_at = datetime.utcnow()
     db.commit()
     
+    db.commit()
+    
+    # Trigger Title Generation for new sessions
+    # Check if we should generate title
+    message_count = db.query(ChatHistory).filter(ChatHistory.session_id == request.session_id).count()
+    if session.title == "New Chat" and message_count <= 5:
+        # Use content as context
+        background_tasks.add_task(update_session_title, request.session_id, current_user.id, request.content, "initial")
+
     return {"message": "History added"}
 
 @router.get("/chat/sessions", response_model=List[SessionSchema])
@@ -255,7 +276,7 @@ def get_chat_sessions(
     """
     sessions = db.query(ChatSession).filter(
         ChatSession.user_id == current_user.id
-    ).order_by(desc(ChatSession.updated_at)).all()
+    ).order_by(desc(ChatSession.updated_at), desc(ChatSession.id)).all()
     
     return [
         {
@@ -378,3 +399,61 @@ def debug_chat_context(
         "messages": formatted_messages,
         "questions_list": questions
     }
+
+class UpdateHistoryRequest(BaseModel):
+    custom_content: Optional[dict] = None
+
+@router.patch("/chat/history/{message_id}")
+def update_chat_history_item(
+    message_id: int,
+    request: UpdateHistoryRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Update the custom_content of a specific chat message.
+    Used for persisting UI states like 'isStatic'.
+    """
+    history_item = db.query(ChatHistory).filter(
+        ChatHistory.id == message_id,
+        ChatHistory.user_id == current_user.id
+    ).first()
+    
+    if not history_item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Message not found"
+        )
+        
+    history_item.custom_content = request.custom_content
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(history_item, "custom_content")
+    
+    db.commit()
+    
+    return {"message": "History updated", "id": message_id}
+
+@router.delete("/chat/history/{message_id}")
+def delete_chat_history_item(
+    message_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Delete a specific chat message.
+    """
+    history_item = db.query(ChatHistory).filter(
+        ChatHistory.id == message_id,
+        ChatHistory.user_id == current_user.id
+    ).first()
+    
+    if not history_item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Message not found"
+        )
+        
+    db.delete(history_item)
+    db.commit()
+    
+    return {"message": "Message deleted", "id": message_id}

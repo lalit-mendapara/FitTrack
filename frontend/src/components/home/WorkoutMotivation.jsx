@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import motivationImage from '../../images/home_page_workout.avif';
 
 const WorkoutMotivation = () => {
@@ -58,9 +59,9 @@ const WorkoutMotivation = () => {
               ))}
             </ul>
 
-            <button className="mt-8 px-8 py-3 bg-gray-900 text-white font-bold rounded-full hover:bg-gray-800 transition-colors shadow-lg">
+            <Link to="/login" className="mt-8 px-8 py-3 bg-gray-900 text-white font-bold rounded-full hover:bg-gray-800 transition-colors shadow-lg inline-block">
               Start Your Journey
-            </button>
+            </Link>
           </div>
 
         </div>

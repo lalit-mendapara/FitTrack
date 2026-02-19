@@ -2,10 +2,10 @@ import React, { useState } from 'react';
 import { Calendar } from 'lucide-react';
 import feastLogo from '../../images/Feast-logo98_png586.png';
 
-const FeastSetupCard = ({ onSubmit, onCancel, dietPlan }) => {
-  const [eventName, setEventName] = useState('');
-  const [eventDate, setEventDate] = useState('');
-  const [selectedMeals, setSelectedMeals] = useState([]);
+const FeastSetupCard = ({ onSubmit, onCancel, dietPlan, isStatic = false, staticData = null, initialData = null }) => {
+  const [eventName, setEventName] = useState(initialData?.eventName || '');
+  const [eventDate, setEventDate] = useState(initialData?.eventDate || '');
+  const [selectedMeals, setSelectedMeals] = useState(initialData?.selectedMeals || []);
   const [error, setError] = useState('');
 
   // Helper to compute max date (14 days from now)
@@ -85,9 +85,25 @@ const FeastSetupCard = ({ onSubmit, onCancel, dietPlan }) => {
   const MEAL_OPTIONS = [
     { key: 'breakfast', label: 'Breakfast' },
     { key: 'lunch', label: 'Lunch' },
-    { key: 'snacks', label: 'Snacks' }, // Assuming 'snack' covers snacks in plan logic or is mapped
+    { key: 'snacks', label: 'Snacks' }, 
     { key: 'dinner', label: 'Dinner' },
   ];
+
+  if (isStatic) {
+      const data = staticData || { eventName, eventDate, selectedMeals };
+      return (
+        <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 opacity-80 w-full max-w-sm">
+            <div className="flex items-center gap-2 mb-2">
+                <img src={feastLogo} alt="Feast" className="h-4 w-4 grayscale" />
+                <span className="font-bold text-gray-600 text-sm">Feast Setup</span>
+            </div>
+            <div className="text-sm space-y-1">
+                <p><span className="font-semibold">Event:</span> {data.eventName} ({data.eventDate})</p>
+                <p><span className="font-semibold">Adjusting:</span> {data.selectedMeals && data.selectedMeals.length > 0 ? data.selectedMeals.map(m => m.charAt(0).toUpperCase() + m.slice(1)).join(', ') : 'All Meals'}</p>
+            </div>
+        </div>
+      );
+  }
 
   return (
     <div className="bg-white p-5 rounded-xl border border-indigo-100 shadow-sm animate-in fade-in slide-in-from-bottom-2 space-y-4 max-w-sm w-full">

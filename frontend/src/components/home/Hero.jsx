@@ -34,12 +34,12 @@ const Hero = () => {
             </p>
             
             <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4">
-              <Link to="/diet-plan" className="px-8 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 w-full sm:w-auto text-center inline-block">
-                Get Your Diet Plan
+              <Link to="/login" className="px-8 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 w-full sm:w-auto text-center inline-block">
+                Explore Plan
               </Link>
-              <button className="px-8 py-4 bg-white text-gray-700 font-bold rounded-full border border-gray-200 hover:border-indigo-200 hover:bg-indigo-50 transition-all duration-300 w-full sm:w-auto">
+              <Link to="/login" className="px-8 py-4 bg-white text-gray-700 font-bold rounded-full border border-gray-200 hover:border-indigo-200 hover:bg-indigo-50 transition-all duration-300 w-full sm:w-auto text-center inline-block">
                 Explore Workouts
-              </button>
+              </Link>
             </div>
 
             <div className="pt-8 flex items-center justify-center lg:justify-start gap-8">

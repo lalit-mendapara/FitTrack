@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Dumbbell, Flame, Ban, Check, ArrowRight, Activity } from 'lucide-react';
 
-const FeastProposalCard = ({ proposal, onConfirm, onCancel, loading }) => {
+const FeastProposalCard = ({ proposal, onConfirm, onCancel, onBack, loading, isStatic = false }) => {
   if (!proposal) return null;
 
   // Local state for adjustments
@@ -36,20 +36,50 @@ const FeastProposalCard = ({ proposal, onConfirm, onCancel, loading }) => {
       { id: 'skip', label: 'Skip', icon: <Ban size={14} />, desc: 'No changes' },
   ];
 
-  if (isActivated) {
+  if (isActivated || isStatic) {
+    // Use values from proposal (saved data) if static, or local state if just activated but not yet static'd (though logic handles both)
+    // Actually, if static, proposal contains the FINAL values because we updated it in parent.
+    // If just activated (local state), use deduction/workoutPref state.
+    
+    const displayDeduction = isStatic ? proposal.daily_deduction : deduction;
+    const displayBanked = isStatic ? proposal.total_banked : totalBanked;
+    const displayWorkout = isStatic ? proposal.workout_preference : workoutPref;
+
     return (
-         <div className="animate-in fade-in zoom-in bg-white p-6 rounded-xl border border-green-100 shadow-md w-full max-w-sm text-center">
-            <div className="w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-3">
-                <Check size={24} />
+         <div className="animate-in fade-in zoom-in bg-white p-6 rounded-xl border border-green-100 shadow-md w-full max-w-sm">
+            <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 bg-green-100 text-green-600 rounded-full flex items-center justify-center shrink-0">
+                    <Check size={20} />
+                </div>
+                <div>
+                     <h3 className="text-lg font-bold text-gray-900 leading-tight">Feast Mode Active</h3>
+                     <p className="text-xs text-gray-500">Plan updated for {proposal.event_name}</p>
+                </div>
             </div>
-            <h3 className="text-lg font-bold text-gray-900 mb-1">Feast Mode Ready!</h3>
-            <p className="text-sm text-gray-500 mb-4">Your plan has been updated.</p>
-            <button 
-                onClick={() => navigate('/dashboard?tab=diet-plan')}
-                className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2"
-            >
-                Go to Diet Plan <ArrowRight size={16} />
-            </button>
+
+            <div className="space-y-3 bg-gray-50 p-4 rounded-xl border border-gray-100">
+                 <div className="flex justify-between items-center text-sm">
+                    <span className="text-gray-600 font-medium">Daily Reduction</span>
+                    <span className="text-gray-900 font-bold">-{displayDeduction} kcal</span>
+                 </div>
+                 <div className="flex justify-between items-center text-sm">
+                    <span className="text-gray-600 font-medium">Banked Calories</span>
+                    <span className="text-green-600 font-bold">+{displayBanked} kcal</span>
+                 </div>
+                 <div className="flex justify-between items-center text-sm pt-2 border-t border-gray-200 mt-2">
+                    <span className="text-gray-600 font-medium">Workout Focus</span>
+                    <span className="text-indigo-600 font-bold capitalize">{displayWorkout || 'Standard'}</span>
+                 </div>
+            </div>
+
+            {!isStatic && (
+                <button 
+                    onClick={() => navigate('/dashboard?tab=diet-plan')}
+                    className="w-full mt-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2"
+                >
+                    Go to Diet Plan <ArrowRight size={16} />
+                </button>
+            )}
          </div>
     );
   }
@@ -143,18 +173,27 @@ const FeastProposalCard = ({ proposal, onConfirm, onCancel, loading }) => {
                   </div>
               </div>
           ) : (
-              <div className="flex gap-2">
-                <button 
-                    onClick={onCancel}
-                    disabled={loading}
-                    className="flex-1 py-2 bg-white border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
-                >
-                    Back
-                </button>
+              <div className="flex flex-col gap-2">
+                <div className="flex gap-2">
+                    <button 
+                        onClick={onCancel}
+                        disabled={loading}
+                        className="flex-1 py-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-lg transition-colors border border-transparent hover:border-gray-200"
+                    >
+                        Cancel
+                    </button>
+                    <button 
+                        onClick={onBack}
+                        disabled={loading}
+                        className="flex-1 py-2 bg-white border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+                    >
+                        Back
+                    </button>
+                </div>
                 <button 
                     onClick={handleConfirm}
                     disabled={loading}
-                    className="flex-[2] py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     <span>Confirm Plan</span>
                     <Check size={14} />

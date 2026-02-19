@@ -300,7 +300,7 @@ const DietPlan = ({ isEmbedded = false, onPlanGenerated }) => {
   }
 
   return (
-    <div className={`h-screen flex flex-col bg-gray-50/50 overflow-hidden`}>
+    <div className={`min-h-screen md:h-screen flex flex-col bg-gray-50/50 md:overflow-hidden`}>
       {!isEmbedded && <Navbar />}
       
       {showProfileUpdateWarning && (
@@ -319,18 +319,20 @@ const DietPlan = ({ isEmbedded = false, onPlanGenerated }) => {
       )}
 
       {/* Feast Mode Banner */}
-      {feastStatus && (
-        <FeastModeBanner 
-          event={feastStatus} 
-          onUpdate={() => {
-            feastModeService.getStatus().then(status => setFeastStatus(status));
-            refreshPlan();
-          }} 
-        />
-      )}
+      <div className="overflow-x-auto scrollbar-hide md:overflow-visible">
+        {feastStatus && (
+          <FeastModeBanner 
+            event={feastStatus} 
+            onUpdate={() => {
+              feastModeService.getStatus().then(status => setFeastStatus(status));
+              refreshPlan();
+            }} 
+          />
+        )}
+      </div>
 
       {/* Hero / Header Section */}
-      <div className={`${isEmbedded ? 'pt-4' : 'pt-20'} bg-white border-b border-gray-100 shadow-sm relative overflow-hidden shrink-0 z-10`}>
+      <div className={`${isEmbedded ? 'pt-4' : 'pt-20'} bg-white border-b border-gray-100 shadow-sm relative md:overflow-hidden shrink-0 z-10 overflow-x-auto scrollbar-hide`}>
          <div className="absolute inset-0 bg-linear-to-r from-indigo-50/50 to-white pointer-events-none"></div>
          <div className="container mx-auto px-6 relative z-10 pb-5">
             <div className="flex flex-col lg:flex-row justify-between items-center gap-4">
@@ -396,7 +398,7 @@ const DietPlan = ({ isEmbedded = false, onPlanGenerated }) => {
          </div>
       </div>
 
-      <div className={`flex-1 overflow-y-auto no-scrollbar ${isEmbedded ? '' : 'pb-24'}`}>
+      <div className={`flex-1 md:overflow-y-auto no-scrollbar ${isEmbedded ? '' : 'pb-24'}`}>
         <div className="container mx-auto px-6 mt-6">
          {!plan || isPlanExpired ? (
             <div className="text-center py-20">

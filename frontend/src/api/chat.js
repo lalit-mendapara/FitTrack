@@ -33,17 +33,32 @@ export const getChatHistory = async (sessionId = "default_session") => {
 /**
  * Manually add a message to the chat history.
  */
-export const addChatMessage = async (sessionId, role, content) => {
+export const addChatMessage = async (sessionId, role, content, customContent = null) => {
     try {
         const response = await api.post('/chat/history', {
             session_id: sessionId,
             role,
-            content
+            content,
+            custom_content: customContent
         });
         return response.data;
     } catch (error) {
         console.error('Add History Error:', error);
         // Don't throw - if saving history fails, flow should continue
+    }
+};
+
+/**
+ * Update a message's custom content (e.g. for static state).
+ */
+export const updateChatMessage = async (messageId, customContent) => {
+    try {
+        const response = await api.patch(`/chat/history/${messageId}`, {
+            custom_content: customContent
+        });
+        return response.data;
+    } catch (error) {
+        console.error('Update History Error:', error);
     }
 };
 
@@ -85,5 +100,17 @@ export const renameSession = async (sessionId, newTitle) => {
     } catch (error) {
         console.error('Rename Session Error:', error);
         throw error;
+    }
+};
+
+/**
+ * Delete a specific chat message.
+ */
+export const deleteChatMessage = async (messageId) => {
+    try {
+        const response = await api.delete(`/chat/history/${messageId}`);
+        return response.data;
+    } catch (error) {
+        console.error('Delete Message Error:', error);
     }
 };

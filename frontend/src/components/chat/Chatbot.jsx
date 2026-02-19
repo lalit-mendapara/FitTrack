@@ -108,7 +108,23 @@ const Chatbot = () => {
         }
     };
 
-    // --- FEAST MODE HANDLERS ---
+    const updateCustomContent = (type, updates = null) => {
+        setMessages(prev => prev.map(msg => {
+            if (msg.customContent && msg.customContent.type === type) {
+                if (updates === null) {
+                    // Remove if updates is null
+                    const { customContent, ...rest } = msg;
+                    return rest;
+                }
+                // Otherwise update val
+                return {
+                    ...msg,
+                    customContent: { ...msg.customContent, ...updates }
+                };
+            }
+            return msg;
+        }));
+    };
 
     const startFeastActivation = () => {
         // Add User Message
@@ -142,12 +158,8 @@ const Chatbot = () => {
         }
     };
 
-    const handleFeastProposal = async ({ eventName, eventDate, selectedMeals }) => {
-        setFeastLoading(true);
-        try {
-            // Remove the setup card from view (optional, or just append)
-            // Ideally we replace the "setup" card with the "proposal" card or just append new messages.
-            // Let's append to keep history.
+            // Mark setup as static (completed)
+            updateCustomContent('feast_setup', { isStatic: true, selectedData: { eventName, eventDate, selectedMeals } });
             
             const proposal = await feastModeService.proposeStrategy(eventName, eventDate, null, selectedMeals);
             setMessages(prev => [...prev, { 
@@ -167,6 +179,9 @@ const Chatbot = () => {
         setFeastLoading(true);
         try {
             await feastModeService.activate(proposalData, true); // workout_boost is handled in data now
+            
+            // Mark proposal as static (activated)
+            updateCustomContent('feast_proposal', { isStatic: true });
             
             // Success Message (Card handles visual success state)
             setMessages(prev => [...prev, { 
@@ -191,6 +206,7 @@ const Chatbot = () => {
         setFeastLoading(true);
         try {
             await feastModeService.cancel();
+            updateCustomContent('feast_deactivate_preview', { isStatic: true });
             setMessages(prev => [...prev, { type: 'ai', text: "Feast Mode has been cancelled. Your original plan is restored." }]);
             await checkFeastStatus();
         } catch (error) {
@@ -201,6 +217,10 @@ const Chatbot = () => {
     };
 
     const cancelInteraction = () => {
+        // Remove active cards (pass null to remove)
+        updateCustomContent('feast_setup', null);
+        updateCustomContent('feast_proposal', null);
+        updateCustomContent('feast_deactivate_preview', null);
         setMessages(prev => [...prev, { type: 'ai', text: "Okay, cancelled." }]);
     };
 
@@ -584,6 +604,8 @@ const Chatbot = () => {
                                                     onSubmit={handleFeastProposal} 
                                                     onCancel={cancelInteraction} 
                                                     dietPlan={plan}
+                                                    isStatic={msg.customContent.isStatic}
+                                                    staticData={msg.customContent.selectedData}
                                                 />
                                             )}
                                             {msg.customContent.type === 'feast_proposal' && (
@@ -592,6 +614,7 @@ const Chatbot = () => {
                                                     onConfirm={handleActivateFeast}
                                                     onCancel={cancelInteraction}
                                                     loading={feastLoading}
+                                                    isStatic={msg.customContent.isStatic}
                                                 />
                                             )}
                                             {msg.customContent.type === 'feast_deactivate_preview' && (
@@ -600,6 +623,7 @@ const Chatbot = () => {
                                                     onConfirm={handleCancelFeast}
                                                     onCancel={cancelInteraction}
                                                     loading={feastLoading}
+                                                    isStatic={msg.customContent.isStatic}
                                                 />
                                             )}
                                         </>

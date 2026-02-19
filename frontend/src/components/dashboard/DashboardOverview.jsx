@@ -12,6 +12,7 @@ import { updateTimezone } from '../../api/user_profile';
 import { getActiveSocialEvent } from '../../api/socialEventService';
 import LockOverlay from '../common/LockOverlay';
 import FeastModeBanner from './FeastModeBanner';
+import NoticeBox from './NoticeBox';
 import { useDietPlan } from '../../hooks/useDietPlan';
 import feastModeService from '../../api/feastModeService';
 
@@ -79,7 +80,9 @@ const DashboardOverview = ({ hasDietPlan, hasWorkoutPlan }) => {
     return (
         <div className="space-y-6">
             {/* Feast Mode Banner */}
-            {feastStatus && <FeastModeBanner event={feastStatus} onUpdate={fetchFeastStatus} />}
+            <div className="overflow-x-auto scrollbar-hide md:overflow-visible">
+                {feastStatus && <FeastModeBanner event={feastStatus} onUpdate={fetchFeastStatus} />}
+            </div>
 
             {/* Notifications Banner */}
             {showNotifications && notifications.length > 0 && (
@@ -105,6 +108,9 @@ const DashboardOverview = ({ hasDietPlan, hasWorkoutPlan }) => {
                     ))}
                 </div>
             )}
+
+            {/* Notice Box - Desktop Only */}
+            <NoticeBox />
 
             {/* Header */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 md:p-6">

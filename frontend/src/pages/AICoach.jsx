@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Send, Bot, User, Loader2, History, Plus, MessageSquare, Copy, Check, MoreVertical, Pencil, Trash2, X } from 'lucide-react';
-import { chatWithCoach, getChatHistory, getChatSessions, deleteSession, renameSession, addChatMessage } from '../api/chat';
+import { chatWithCoach, getChatHistory, getChatSessions, deleteSession, renameSession, addChatMessage, updateChatMessage, deleteChatMessage } from '../api/chat';
 import { feastModeService } from '../api/feastModeService';
 import FeastSetupCard from '../components/chat/FeastSetupCard';
 import FeastProposalCard from '../components/common/FeastProposalCard';
@@ -101,8 +101,10 @@ const AICoach = () => {
         try {
             const history = await getChatHistory(sessionId);
             const formattedHistory = history.map(msg => ({
+                id: msg.id,
                 type: msg.role === 'assistant' ? 'ai' : 'user',
                 text: msg.content,
+                customContent: msg.custom_content,
                 timestamp: msg.timestamp || new Date().toISOString()
             }));
             
@@ -127,50 +129,97 @@ const AICoach = () => {
         }
     };
 
+    const updateCustomContent = (type, updates = null) => {
+        setMessages(prev => prev.map(msg => {
+            if (msg.customContent && msg.customContent.type === type) {
+                if (updates === null) {
+                    // Remove if updates is null
+                    const { customContent, ...rest } = msg;
+
+                    // If message is persisted, we should probably update it too, 
+                    // but removing customContent via API might mean setting it to null
+                    if (msg.id) {
+                        updateChatMessage(msg.id, null);
+                    }
+                    return rest;
+                }
+                
+                // Otherwise update val
+                const newCustomContent = { ...msg.customContent, ...updates };
+                
+                // Persist to backend if message has ID
+                if (msg.id) {
+                    updateChatMessage(msg.id, newCustomContent);
+                }
+
+                return {
+                    ...msg,
+                    customContent: newCustomContent
+                };
+            }
+            return msg;
+        }));
+    };
+
     // --- FEAST MODE HANDLERS ---
 
-    const startFeastActivation = () => {
+    const startFeastActivation = async () => {
         // Add User Message
         const userText = "I want to activate Feast Mode";
-        setMessages(prev => [...prev, { type: 'user', text: userText, timestamp: new Date().toISOString() }]);
-        addChatMessage(sessionId, 'user', userText);
+        const userMsgDesc = { type: 'user', text: userText, timestamp: new Date().toISOString() };
+        
+        // Optimistically add user msg
+        setMessages(prev => [...prev, userMsgDesc]);
+        
+        // Persist user msg
+        await addChatMessage(sessionId, 'user', userText);
 
         // Add AI Message with Setup Card
-        setTimeout(() => {
+        setTimeout(async () => {
             const aiText = "Great! Let's get that set up. When is your big event?";
+            const customContent = { type: 'feast_setup' };
+            
+            // Persist AI msg first to get ID
+            const savedMsg = await addChatMessage(sessionId, 'assistant', aiText, customContent);
+            
             setMessages(prev => [...prev, { 
+                id: savedMsg?.id, // Important for updates
                 type: 'ai', 
                 text: aiText,
                 timestamp: new Date().toISOString(),
-                customContent: { type: 'feast_setup' }
+                customContent: customContent
             }]);
-            addChatMessage(sessionId, 'assistant', aiText); // We can't save customContent perfectly yet, but saving text helps context
         }, 500);
     };
 
     const startFeastDeactivation = async () => {
         const userText = "I want to deactivate Feast Mode";
         setMessages(prev => [...prev, { type: 'user', text: userText, timestamp: new Date().toISOString() }]);
-        addChatMessage(sessionId, 'user', userText);
+        await addChatMessage(sessionId, 'user', userText);
         setIsLoading(true);
 
         try {
             const preview = await feastModeService.getDeactivationPreview();
             const aiText = "Here is what will happen if you cancel Feast Mode now:";
+            const customContent = { type: 'feast_deactivate_preview', data: preview };
+
+            const savedMsg = await addChatMessage(sessionId, 'assistant', aiText, customContent);
+
             setMessages(prev => [...prev, { 
+                id: savedMsg?.id,
                 type: 'ai', 
                 text: aiText,
                 timestamp: new Date().toISOString(),
-                customContent: { type: 'feast_deactivate_preview', data: preview }
+                customContent: customContent
             }]);
-             // We persist the text part so history makes sense
-            addChatMessage(sessionId, 'assistant', aiText);
         } catch (error) {
+            const errorText = "I couldn't fetch the deactivation details. Please try again.";
             setMessages(prev => [...prev, { 
                 type: 'ai', 
-                text: "I couldn't fetch the deactivation details. Please try again.",
+                text: errorText,
                 timestamp: new Date().toISOString()
             }]);
+            await addChatMessage(sessionId, 'assistant', errorText);
         } finally {
             setIsLoading(false);
         }
@@ -179,20 +228,48 @@ const AICoach = () => {
     const handleFeastProposal = async ({ eventName, eventDate, selectedMeals }) => {
         setFeastLoading(true);
         try {
+            // Mark setup as static (completed) locally
+            updateCustomContent('feast_setup', { isStatic: true, selectedData: { eventName, eventDate, selectedMeals } });
+
+            // Robust persistence - SWEEP ALL SETUP CARDS
+            try {
+                const history = await getChatHistory(sessionId);
+                const interactiveMsgs = history.filter(m => 
+                    m.custom_content?.type === 'feast_setup' && !m.custom_content.isStatic
+                );
+                
+                for (const msg of interactiveMsgs) {
+                    await updateChatMessage(msg.id, {
+                        ...msg.custom_content,
+                        isStatic: true,
+                        selectedData: { eventName, eventDate, selectedMeals }
+                    });
+                }
+            } catch (e) { console.error("Persist setup sweep failed", e); }
+
             const proposal = await feastModeService.proposeStrategy(eventName, eventDate, null, selectedMeals);
+            
+            const aiText = `I've calculated a strategy for ${eventName}. Check it out:`;
+            const customContent = { type: 'feast_proposal', data: proposal };
+
+            const savedMsg = await addChatMessage(sessionId, 'assistant', aiText, customContent);
+
             setMessages(prev => [...prev, { 
+                id: savedMsg?.id,
                 type: 'ai', 
-                text: `I've calculated a strategy for ${eventName}. Check it out:`,
+                text: aiText,
                 timestamp: new Date().toISOString(),
-                customContent: { type: 'feast_proposal', data: proposal }
+                customContent: customContent
             }]);
         } catch (error) {
-            toast.error(error.response?.data?.detail || "Failed to propose strategy");
+            const errorText = error.response?.data?.detail || "Sorry, I couldn't generate a proposal. Please check the date and try again.";
+            toast.error(errorText);
             setMessages(prev => [...prev, { 
                 type: 'ai', 
-                text: "Sorry, I couldn't generate a proposal. Please check the date and try again.",
+                text: errorText,
                 timestamp: new Date().toISOString()
             }]);
+            await addChatMessage(sessionId, 'assistant', errorText);
         } finally {
             setFeastLoading(false);
         }
@@ -203,13 +280,43 @@ const AICoach = () => {
         try {
             await feastModeService.activate(proposalData, true);
             
+            // Mark proposal as static (activated) locally and save USER CHOICES
+            updateCustomContent('feast_proposal', { 
+                isStatic: true,
+                data: proposalData 
+            });
+
+            // Robust persistence - SWEEP ALL PROPOSAL CARDS
+            try {
+                const history = await getChatHistory(sessionId);
+                const interactiveMsgs = history.filter(m => 
+                    m.custom_content?.type === 'feast_proposal' && !m.custom_content.isStatic
+                );
+                
+                for (const msg of interactiveMsgs) {
+                    await updateChatMessage(msg.id, {
+                        ...msg.custom_content,
+                        isStatic: true,
+                        data: proposalData
+                    });
+                }
+            } catch (e) { console.error("Persist activation sweep failed", e); }
+
             // Success Message
             const successText = `🎉 **Feast Mode Activated!**`;
+            const customContent = { isStatic: true }; // Just a marker or maybe keep proposal data if needed?
+            // Actually, usually this success message might not need custom content unless we want to show a card.
+            // But let's keep it simple text for now, or if there was a card, same pattern.
+            // The user prompt implied just text.
+            
+            const savedMsg = await addChatMessage(sessionId, 'assistant', successText);
+
             setMessages(prev => [...prev, { 
+                id: savedMsg?.id,
                 type: 'ai', 
                 text: successText,
+                timestamp: new Date().toISOString()
             }]);
-            addChatMessage(sessionId, 'assistant', successText);
             
             // Refresh Status
             await checkFeastStatus();
@@ -225,13 +332,37 @@ const AICoach = () => {
         setFeastLoading(true);
         try {
             await feastModeService.cancel();
+            
+            // Mark preview as static locally
+            updateCustomContent('feast_deactivate_preview', { isStatic: true });
+
+            // ROBUST FIX: SWEEP ALL PREVIEW CARDS
+            try {
+                const history = await getChatHistory(sessionId);
+                const interactiveMsgs = history.filter(m => 
+                    m.custom_content?.type === 'feast_deactivate_preview' && !m.custom_content.isStatic
+                );
+                
+                for (const msg of interactiveMsgs) {
+                    await updateChatMessage(msg.id, {
+                        ...msg.custom_content,
+                        isStatic: true
+                    });
+                }
+            } catch (err) {
+                console.error("Failed to persist static state", err);
+            }
+
             const cancelText = "Feast Mode has been cancelled. Your original plan is restored.";
+            const savedMsg = await addChatMessage(sessionId, 'assistant', cancelText);
+            
             setMessages(prev => [...prev, { 
+                id: savedMsg?.id,
                 type: 'ai', 
                 text: cancelText,
                 timestamp: new Date().toISOString()
             }]);
-            addChatMessage(sessionId, 'assistant', cancelText);
+            
             await checkFeastStatus();
         } catch (error) {
             toast.error("Failed to cancel");
@@ -240,8 +371,37 @@ const AICoach = () => {
         }
     };
 
-    const cancelInteraction = () => {
-        setMessages(prev => [...prev, { type: 'ai', text: "Okay, cancelled.", timestamp: new Date().toISOString() }]);
+    const cancelInteraction = async () => {
+        // Find messages to delete (active cards)
+        const messagesToDelete = messages.filter(msg => 
+            msg.customContent && (
+                (msg.customContent.type === 'feast_setup' && !msg.customContent.isStatic) ||
+                (msg.customContent.type === 'feast_proposal' && !msg.customContent.isStatic) ||
+                (msg.customContent.type === 'feast_deactivate_preview' && !msg.customContent.isStatic)
+            )
+        );
+
+        // Delete from backend
+        for (const msg of messagesToDelete) {
+            if (msg.id) {
+                await deleteChatMessage(msg.id);
+            }
+        }
+
+        // Remove from local state
+        setMessages(prev => prev.filter(msg => 
+            !msg.customContent || (
+                msg.customContent.type !== 'feast_setup' && 
+                msg.customContent.type !== 'feast_proposal' && 
+                msg.customContent.type !== 'feast_deactivate_preview'
+            ) || msg.customContent.isStatic
+        ));
+
+        // Optional: Add a small toast or just transient message?
+        // User asked for messages to disappear, so maybe no "Okay cancelled" message needed?
+        // But some feedback is good. unique id for this system msg prevents persisted history clutter?
+        // actually let's just show a toast
+        toast.info("Feast interaction cancelled");
     };
 
     const handleSend = async (e, manualText = null) => {
@@ -269,7 +429,7 @@ const AICoach = () => {
             addChatMessage(sessionId, 'user', userMsg); // Save the trigger message
             
             // Wait a tick to allow state update
-            setTimeout(() => {
+            setTimeout(async () => {
                  const aiText = "Great! Let's get that set up. When is your big event?";
                  setMessages(prev => [...prev, { 
                     type: 'ai', 
@@ -277,7 +437,10 @@ const AICoach = () => {
                     timestamp: new Date().toISOString(),
                     customContent: { type: 'feast_setup' }
                 }]);
-                addChatMessage(sessionId, 'assistant', aiText);
+                await addChatMessage(sessionId, 'assistant', aiText);
+                
+                // Refresh sessions to get the new title (generated in background)
+                fetchSessions();
             }, 100);
             return;
         }
@@ -291,16 +454,38 @@ const AICoach = () => {
                 timestamp: new Date().toISOString() 
             }]);
 
-            // Sync Title if updated
+            // Sync Title if updated and Move to Top (Optimistic Update)
             if (data.title) {
                 setSessions(prevSessions => {
-                    return prevSessions.map(s => 
-                        s.session_id === sessionId && s.title !== data.title 
-                            ? { ...s, title: data.title } 
+                    const updated = prevSessions.map(s => 
+                        s.session_id === sessionId 
+                            ? { ...s, title: data.title, last_active: new Date().toISOString() } 
                             : s
                     );
+                    const current = updated.find(s => s.session_id === sessionId);
+                    const others = updated.filter(s => s.session_id !== sessionId);
+                    
+                    return current ? [current, ...others] : updated;
+                });
+            } else {
+                // Even if no title update, move current session to top
+                setSessions(prevSessions => {
+                    const current = prevSessions.find(s => s.session_id === sessionId);
+                    const others = prevSessions.filter(s => s.session_id !== sessionId);
+                    
+                    if (current) {
+                        return [{ ...current, last_active: new Date().toISOString() }, ...others];
+                    }
+                    return prevSessions;
                 });
             }
+            
+            // Refresh sessions list immediately and then delayed to catch background title generation
+            fetchSessions();
+            setTimeout(() => fetchSessions(), 3000);
+            setTimeout(() => fetchSessions(), 8000);
+            setTimeout(() => fetchSessions(), 15000);
+
         } catch (error) {
             console.error(error);
             toast.error("Failed to connect to the coach.");
@@ -350,8 +535,10 @@ const AICoach = () => {
         try {
             const history = await getChatHistory(sid);
             const formattedHistory = history.map(msg => ({
+                id: msg.id,
                 type: msg.role === 'assistant' ? 'ai' : 'user',
                 text: msg.content,
+                customContent: msg.custom_content,
                 timestamp: msg.timestamp || new Date().toISOString()
             }));
             setMessages(formattedHistory.length > 0 ? formattedHistory : [{ 
@@ -430,6 +617,47 @@ const AICoach = () => {
         setEditingSession(s.session_id);
         setEditTitle(s.title || '');
         setActiveMenu(null);
+    };
+
+    const handleBackToSetup = (proposalData) => {
+        // Revert the last message (Proposal) back to Setup
+        setMessages(prev => {
+            let newMsgs = [...prev];
+            const lastMsg = newMsgs[newMsgs.length - 1];
+            
+            // Check if the message before the last one is a static setup card
+            if (newMsgs.length >= 2) {
+                const prevMsg = newMsgs[newMsgs.length - 2];
+                if (prevMsg.customContent?.type === 'feast_setup' && prevMsg.customContent.isStatic) {
+                    // Remove the static setup card
+                    newMsgs.splice(newMsgs.length - 2, 1);
+                }
+            }
+
+            // Now update the last message (which might have shifted index if we removed one)
+            const targetIndex = newMsgs.length - 1;
+            const targetMsg = newMsgs[targetIndex];
+
+            if (targetMsg.customContent?.type === 'feast_proposal') {
+                // We want to go back to feast_setup
+                // The proposal data contains the event info we need to restore
+                newMsgs[targetIndex] = {
+                    ...targetMsg,
+                    text: "Let's adjust the details.",
+                    customContent: { 
+                        type: 'feast_setup',
+                        // We need to pass back the original inputs, which confusingly are mixed in proposalData
+                        // proposalData has event_name, event_date, etc.
+                        initialData: {
+                            eventName: proposalData.event_name,
+                            eventDate: proposalData.event_date.split('T')[0], // ensure YYYY-MM-DD
+                            selectedMeals: proposalData.selected_meals
+                        }
+                    }
+                };
+            }
+            return newMsgs;
+        });
     };
 
     return (
@@ -626,14 +854,21 @@ const AICoach = () => {
                                                         onSubmit={handleFeastProposal} 
                                                         onCancel={cancelInteraction} 
                                                         dietPlan={plan}
+                                                        isStatic={msg.customContent.isStatic}
+                                                        staticData={msg.customContent.selectedData}
+                                                        initialData={msg.customContent.initialData}
                                                     />
                                                 )}
+
+
                                                 {msg.customContent.type === 'feast_proposal' && (
                                                     <FeastProposalCard 
                                                         proposal={msg.customContent.data}
                                                         onConfirm={handleActivateFeast}
                                                         onCancel={cancelInteraction}
+                                                        onBack={() => handleBackToSetup(msg.customContent.data)}
                                                         loading={feastLoading}
+                                                        isStatic={msg.customContent.isStatic}
                                                     />
                                                 )}
                                                 {msg.customContent.type === 'feast_deactivate_preview' && (
@@ -642,6 +877,7 @@ const AICoach = () => {
                                                         onConfirm={handleCancelFeast}
                                                         onCancel={cancelInteraction}
                                                         loading={feastLoading}
+                                                        isStatic={msg.customContent.isStatic}
                                                     />
                                                 )}
                                             </>

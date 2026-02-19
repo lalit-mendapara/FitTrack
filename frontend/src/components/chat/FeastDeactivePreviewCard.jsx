@@ -1,7 +1,7 @@
 import React from 'react';
-import { AlertCircle, ArrowRight, Activity, Flame } from 'lucide-react';
+import { AlertCircle, ArrowRight, Activity, Flame, Ban } from 'lucide-react';
 
-const FeastDeactivePreviewCard = ({ preview, onConfirm, onCancel, loading }) => {
+const FeastDeactivePreviewCard = ({ preview, onConfirm, onCancel, loading, isStatic = false }) => {
   if (!preview) return null;
 
   // Helper to extract meals from snapshot
@@ -35,6 +35,18 @@ const FeastDeactivePreviewCard = ({ preview, onConfirm, onCancel, loading }) => 
   };
 
   const restoredMeals = getRestoredMeals();
+
+  if (isStatic) {
+    return (
+        <div className="bg-gray-50 p-5 rounded-xl border border-gray-200 opacity-80 w-full max-w-sm text-center">
+            <div className="p-2 bg-gray-200 text-gray-500 rounded-full w-10 h-10 flex items-center justify-center mx-auto mb-2">
+                <Ban size={20} />
+            </div>
+            <h3 className="font-bold text-gray-700">Feast Mode Cancelled</h3>
+            <p className="text-xs text-gray-500">Regular plan restored.</p>
+        </div>
+    );
+  }
 
   return (
     <div className="bg-white p-5 rounded-xl border border-red-100 shadow-sm animate-in fade-in slide-in-from-bottom-2 space-y-4 max-w-sm w-full">

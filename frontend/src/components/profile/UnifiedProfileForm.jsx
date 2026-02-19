@@ -188,7 +188,7 @@ const UnifiedProfileForm = ({ existingProfile, existingPreferences, onSuccess, o
     return (
         <div className="bg-white p-8 rounded-3xl shadow-xl w-full max-w-5xl mx-auto border border-gray-100">
              <div className="mb-10 text-center">
-                <h2 className="text-3xl font-black text-gray-900 bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">
+                <h2 className="text-3xl font-black text-gray-900 bg-clip-text bg-linear-to-r from-indigo-600 to-purple-600">
                    {existingProfile ? 'Update Your Profile' : 'Let\'s Get Started'}
                 </h2>
                 <p className="text-gray-500 mt-3 text-lg font-medium">
@@ -335,7 +335,7 @@ const UnifiedProfileForm = ({ existingProfile, existingPreferences, onSuccess, o
                         </h3>
                         <label className="flex items-center gap-3 cursor-pointer">
                             <span className="text-sm font-semibold text-gray-600">Setup Workout Plan?</span>
-                             <div className="relative inline-block w-12 h-6 rounded-full transition-colors duration-200 ease-in-out bg-gray-200 has-[:checked]:bg-indigo-600">
+                             <div className="relative inline-block w-12 h-6 rounded-full transition-colors duration-200 ease-in-out bg-gray-200 has-checked:bg-indigo-600">
                                 <input 
                                     type="checkbox" 
                                     className="peer sr-only"
@@ -373,7 +373,7 @@ const UnifiedProfileForm = ({ existingProfile, existingPreferences, onSuccess, o
                              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                  {/* Frequency */}
                                  <div>
-                                    <label className="block text-sm font-bold text-gray-700 mb-3 flex justify-between">
+                                    <label className="text-sm font-bold text-gray-700 mb-3 flex justify-between">
                                         <span>Days Per Week</span>
                                         <span className="text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded text-xs">
                                             {formData.days_per_week} Days
@@ -438,7 +438,7 @@ const UnifiedProfileForm = ({ existingProfile, existingPreferences, onSuccess, o
                     <button
                         type="submit"
                         disabled={isLoading}
-                        className={`w-full py-4 px-6 rounded-2xl shadow-xl shadow-indigo-200 text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 focus:outline-none focus:ring-4 focus:ring-indigo-500/30 font-bold text-xl transition-all transform hover:-translate-y-1 active:scale-95 ${isLoading ? 'opacity-80 cursor-wait' : ''}`}
+                        className={`w-full py-4 px-6 rounded-2xl shadow-xl shadow-indigo-200 text-white bg-linear-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 focus:outline-none focus:ring-4 focus:ring-indigo-500/30 font-bold text-xl transition-all transform hover:-translate-y-1 active:scale-95 ${isLoading ? 'opacity-80 cursor-wait' : ''}`}
                     >
                         {isLoading ? 'Saving...' : (includeWorkout ? 'Save All Preferences' : 'Save Physical Profile')}
                     </button>
