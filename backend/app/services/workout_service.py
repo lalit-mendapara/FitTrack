@@ -164,6 +164,29 @@ def generate_workout_plan(db: Session, request_data: WorkoutPlanRequestData):
 
     system_prompt = "You are a professional fitness coach. Return strictly valid JSON."
     
+    # --- Determine weekly day ordering ---
+    all_day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    
+    if request_data.start_from_today:
+        from datetime import datetime as _dt
+        today_weekday = _dt.today().weekday()  # 0=Mon
+        rotated_days = all_day_names[today_weekday:] + all_day_names[:today_weekday]
+    else:
+        rotated_days = list(all_day_names)
+    
+    # Build the day mapping string for the LLM (e.g., day1: Tuesday, day2: Wednesday, ...)
+    day_mapping_lines = ", ".join([f'"day{i+1}": "{d}"' for i, d in enumerate(rotated_days)])
+    
+    # --- Sunday rest constraint ---
+    sunday_rest_rule = ""
+    if prefs.days_per_week < 7:
+        sunday_rest_rule = """
+    ⛔ SUNDAY REST RULE:
+    - Sunday MUST be a REST/RECOVERY day. Do NOT schedule any workout on Sunday.
+    - Mark Sunday as: {"day_name": "Sunday", "workout_name": "Rest Day", "primary_muscle_group": "Recovery", "focus": "Rest", "exercises": [], "cardio_exercises": [], "session_duration_min": 0}
+    - Distribute actual workout days across the remaining 6 weekdays only.
+    """
+    
     user_prompt = f"""
     # ROLE (Persona)
     You are a professional Fitness Coach.
@@ -174,12 +197,19 @@ def generate_workout_plan(db: Session, request_data: WorkoutPlanRequestData):
     - Existing Plan Context: {existing_plan_context}
     
     # TASK (Goal)
-    Create a detailed {prefs.days_per_week}-day workout split that:
-    1. Aligns with the user's goal ({profile.fitness_goal}) and experience level.
-    2. Includes specific warm-up and regular cardio.
-    3. Adapts to user feedback: "{custom_prompt if custom_prompt else 'None'}"
+    Create a 7-day weekly schedule that includes exactly {prefs.days_per_week} workout days (rest of the days are Rest/Recovery).
+    The schedule must:
+    1. Align with the user's goal ({profile.fitness_goal}) and experience level.
+    2. Include specific warm-up and regular cardio on workout days.
+    3. Adapt to user feedback: "{custom_prompt if custom_prompt else 'None'}"
     
     {social_context}
+
+    # WEEKLY DAY ORDER (CRITICAL)
+    You MUST use exactly this day mapping for the weekly schedule:
+    {day_mapping_lines}
+    Each "dayN" key MUST have its "day_name" set exactly as specified above.
+    {sunday_rest_rule}
 
     # CONSTRAINTS (Health & Safety) - CRITICAL
     - Health Restrictions: "{prefs.health_restrictions}"
@@ -208,12 +238,13 @@ def generate_workout_plan(db: Session, request_data: WorkoutPlanRequestData):
     {cardio_context}
     
     # FORMATTING RULES
-    1. MANDATORY: Include at least 1 cardio exercise in 'cardio_exercises' per day.
+    1. MANDATORY: Include at least 1 cardio exercise in 'cardio_exercises' per workout day (not rest days).
     2. STRICT SELECTION: For 'cardio_exercises', pick explicitly from 'AVAILABLE CARDIO'.
     3. INSTRUCTIONS: Each exercise MUST have "instructions" with exactly 3 tips (Safety, Performance, Benefits).
     4. SEQUENCING: Group exercises by muscle group (4 exercises per group).
        - Example: Chest & Triceps -> 4 Chest exercises, then 4 Triceps exercises.
-    5. OUTPUT: Strictly return valid JSON.
+    5. ALWAYS output exactly 7 days (day1 through day7). Non-workout days should be Rest/Recovery.
+    6. OUTPUT: Strictly return valid JSON.
 
     === OUTPUT JSON ===
     {{
@@ -223,14 +254,20 @@ def generate_workout_plan(db: Session, request_data: WorkoutPlanRequestData):
         "duration_weeks": 8,
         "weekly_schedule": {{
           "day1": {{
-             "day_name": "Monday",
+             "day_name": "{rotated_days[0]}",
              "workout_name": "Push Day",
              "primary_muscle_group": "Chest & Triceps",
              "focus": "Strength",
              "exercises": [ {{"exercise": "Bench Press", "sets": 3, "reps": "10-12", "rest_sec": 60, "instructions": ["Safety: Keep your back flat on the bench", "Performance: Lower bar to chest with control", "Benefits: Builds chest, shoulders, and triceps strength"]}} ],
              "cardio_exercises": [ {{"exercise": "Running", "duration": "10 mins", "intensity": "Moderate", "notes": "Warm-up", "instructions": ["Safety: Warm up properly", "Performance: Maintain steady pace", "Benefits: Improves cardiovascular health"]}} ], 
              "session_duration_min": 60
-          }}
+          }},
+          "day2": {{ "day_name": "{rotated_days[1]}", "..." : "..." }},
+          "day3": {{ "day_name": "{rotated_days[2]}", "..." : "..." }},
+          "day4": {{ "day_name": "{rotated_days[3]}", "..." : "..." }},
+          "day5": {{ "day_name": "{rotated_days[4]}", "..." : "..." }},
+          "day6": {{ "day_name": "{rotated_days[5]}", "..." : "..." }},
+          "day7": {{ "day_name": "{rotated_days[6]}", "..." : "..." }}
         }},
         "progression_guidelines": ["Tip 1", "Tip 2"],
         "cardio_recommendations": ["Do 20 mins LISS on rest days", "HIIT once a week"]

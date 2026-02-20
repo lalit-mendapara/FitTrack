@@ -1,7 +1,83 @@
 import React, { useState, useEffect } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import api from '../../api/axios';
 import { Utensils, TrendingUp } from 'lucide-react';
+
+// Custom 3D Rounded Bar Shape for Stacked Bars
+const RoundedBar = (props) => {
+    const { fill, x, y, width, height, dataKey } = props;
+    
+    // Create unique IDs for gradients and filters
+    const gradientId = `gradient-${Math.round(x)}-${Math.round(y)}-${fill.replace(/#/g, '')}`;
+    const shadowId = `shadow-${Math.round(x)}-${Math.round(y)}-${fill.replace(/#/g, '')}`;
+    
+    // Determine if this segment is top or bottom of stack
+    const isTopOfStack = dataKey === 'calories_other';
+    const isBottomOfStack = dataKey === 'calories_breakfast';
+    
+    // Apply rounded corners based on stack position
+    const topRadius = isTopOfStack ? 8 : 0;
+    const bottomRadius = isBottomOfStack ? 8 : 0;
+    
+    return (
+        <g>
+            {/* Definitions for gradient and shadow */}
+            <defs>
+                <linearGradient id={gradientId} x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" stopColor={fill} stopOpacity={1} />
+                    <stop offset="70%" stopColor={fill} stopOpacity={0.95} />
+                    <stop offset="100%" stopColor={fill} stopOpacity={0.85} />
+                </linearGradient>
+                <filter id={shadowId} x="-50%" y="-50%" width="200%" height="200%">
+                    <feGaussianBlur in="SourceAlpha" stdDeviation="2"/>
+                    <feOffset dx="0" dy="2" result="offsetblur"/>
+                    <feFlood floodColor="#000000" floodOpacity="0.15"/>
+                    <feComposite in2="offsetblur" operator="in"/>
+                    <feMerge>
+                        <feMergeNode/>
+                        <feMergeNode in="SourceGraphic"/>
+                    </feMerge>
+                </filter>
+            </defs>
+            
+            {/* Create path with rounded corners */}
+            <path
+                d={`
+                    M ${x},${y + topRadius}
+                    ${topRadius > 0 ? `Q ${x},${y} ${x + topRadius},${y}` : `L ${x},${y}`}
+                    L ${x + width - topRadius},${y}
+                    ${topRadius > 0 ? `Q ${x + width},${y} ${x + width},${y + topRadius}` : `L ${x + width},${y}`}
+                    L ${x + width},${y + height - bottomRadius}
+                    ${bottomRadius > 0 ? `Q ${x + width},${y + height} ${x + width - bottomRadius},${y + height}` : `L ${x + width},${y + height}`}
+                    L ${x + bottomRadius},${y + height}
+                    ${bottomRadius > 0 ? `Q ${x},${y + height} ${x},${y + height - bottomRadius}` : `L ${x},${y + height}`}
+                    Z
+                `}
+                fill={`url(#${gradientId})`}
+                filter={`url(#${shadowId})`}
+                style={{ cursor: 'pointer' }}
+            />
+            
+            {/* Top highlight for 3D effect (only on top bar) */}
+            {isTopOfStack && height > 10 && (
+                <path
+                    d={`
+                        M ${x + topRadius},${y}
+                        L ${x + width - topRadius},${y}
+                        ${topRadius > 0 ? `Q ${x + width},${y} ${x + width},${y + topRadius}` : ''}
+                        L ${x + width},${y + Math.min(height * 0.3, 8)}
+                        L ${x},${y + Math.min(height * 0.3, 8)}
+                        ${topRadius > 0 ? `Q ${x},${y} ${x + topRadius},${y}` : ''}
+                        Z
+                    `}
+                    fill="white"
+                    opacity={0.2}
+                    pointerEvents="none"
+                />
+            )}
+        </g>
+    );
+};
 
 const WeeklyDietTrack = () => {
     const [weeklyData, setWeeklyData] = useState([]);
@@ -96,11 +172,41 @@ const WeeklyDietTrack = () => {
                             domain={[0, 3000]}
                         />
                         <Tooltip content={<CustomTooltip />} cursor={{ fill: '#f9fafb' }} />
-                        <Bar dataKey="calories_breakfast" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} maxBarSize={40} />
-                        <Bar dataKey="calories_lunch" stackId="a" fill="#0ea5e9" radius={[0, 0, 0, 0]} maxBarSize={40} />
-                        <Bar dataKey="calories_dinner" stackId="a" fill="#8b5cf6" radius={[0, 0, 0, 0]} maxBarSize={40} />
-                        <Bar dataKey="calories_snack" stackId="a" fill="#f59e0b" radius={[0, 0, 0, 0]} maxBarSize={40} />
-                        <Bar dataKey="calories_other" stackId="a" fill="#9ca3af" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                        <Bar 
+                            dataKey="calories_breakfast" 
+                            stackId="a" 
+                            fill="#10b981" 
+                            shape={<RoundedBar />}
+                            maxBarSize={50}
+                        />
+                        <Bar 
+                            dataKey="calories_lunch" 
+                            stackId="a" 
+                            fill="#0ea5e9" 
+                            shape={<RoundedBar />}
+                            maxBarSize={50}
+                        />
+                        <Bar 
+                            dataKey="calories_dinner" 
+                            stackId="a" 
+                            fill="#8b5cf6" 
+                            shape={<RoundedBar />}
+                            maxBarSize={50}
+                        />
+                        <Bar 
+                            dataKey="calories_snack" 
+                            stackId="a" 
+                            fill="#f59e0b" 
+                            shape={<RoundedBar />}
+                            maxBarSize={50}
+                        />
+                        <Bar 
+                            dataKey="calories_other" 
+                            stackId="a" 
+                            fill="#9ca3af" 
+                            shape={<RoundedBar />}
+                            maxBarSize={50}
+                        />
                     </BarChart>
                 </ResponsiveContainer>
             </div>

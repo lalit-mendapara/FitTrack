@@ -52,7 +52,8 @@ export const generateWorkoutPlan = async (workoutPreferences, customPrompt = nul
             // user_id is inferred from token on backend usually
             workout_preferences: workoutPreferences,
             custom_prompt: customPrompt,
-            ignore_history: options.ignore_history || false
+            ignore_history: options.ignore_history || false,
+            start_from_today: options.start_from_today || false
         }
     };
     

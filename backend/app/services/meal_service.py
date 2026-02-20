@@ -832,43 +832,57 @@ def calculate_portions_from_dishes(
         # -------------------------------------------------------
 
         # Step 4: Format final output with human-readable portions
+        # First pass: compute weights after rounding + constraint clipping
+        final_items = []  # list of (clean_name, final_weight, density)
         
-        # Step 4: Format final output with human-readable portions
-        portion_parts = []
-        final_p = final_c = final_f = final_cal = 0
-        
-        # First add food items
         for w in work_items:
             final_weight = round(w["weight"] / 5) * 5  # Round to nearest 5g
             constraints = w.get("constraints", {"min": 50, "max": 300})
             final_weight = max(constraints["min"], min(constraints["max"], final_weight))
-            
-            # Clean name: take first part before comma to avoid long USDA descriptions
-            # e.g. "Chicken, breast, raw" -> "Chicken" (or maybe we want "Chicken breast"?)
-            # USDA usually format: "Term, Qualifier, Qualifier". 
-            # Let's take first 2 terms if short, or just first.
-            # actually simplified: just split by comma and take first part.
             clean_name = w['name'].split(',')[0].strip()
-            portion_parts.append(f"{int(final_weight)}g {clean_name}")
-            
-            final_p += final_weight * w["density"]["p"]
-            final_c += final_weight * w["density"]["c"]
-            final_f += final_weight * w["density"]["f"]
-            final_cal += final_weight * w["density"]["cal"]
+            final_items.append((clean_name, final_weight, w["density"], "g"))
         
-        # Then add beverages (with ml notation)
         for b in beverage_items:
             clean_name = b['name'].split(',')[0].strip()
-            portion_parts.append(f"{int(b['weight'])}ml {clean_name}")
+            final_items.append((clean_name, b["weight"], b["density"], "ml"))
+        
+        # [FIX] Calorie re-normalization after constraint clipping
+        # Constraint clipping can break the calorie total. Re-scale non-beverage
+        # items proportionally to bring total calories back to the meal target.
+        pre_clip_cal = sum(w * d["cal"] for _, w, d, _ in final_items)
+        
+        if pre_clip_cal > 0 and abs(pre_clip_cal - m_target_cal) / m_target_cal > 0.05:
+            # Only re-scale food items (not beverages)
+            bev_cal = sum(w * d["cal"] for _, w, d, u in final_items if u == "ml")
+            food_cal = pre_clip_cal - bev_cal
+            needed_food_cal = m_target_cal - bev_cal
             
-            final_p += b["weight"] * b["density"]["p"]
-            final_c += b["weight"] * b["density"]["c"]
-            final_f += b["weight"] * b["density"]["f"]
-            final_cal += b["weight"] * b["density"]["cal"]
+            if food_cal > 0 and needed_food_cal > 0:
+                rescale = needed_food_cal / food_cal
+                new_items = []
+                for name, weight, density, unit in final_items:
+                    if unit == "ml":
+                        new_items.append((name, weight, density, unit))
+                    else:
+                        new_weight = round((weight * rescale) / 5) * 5
+                        new_weight = max(50, new_weight)  # Minimum 50g
+                        new_items.append((name, new_weight, density, unit))
+                final_items = new_items
+                print(f"    🔄 Post-clip calorie re-normalization: scale={rescale:.3f}")
+        
+        # Build portion string and calculate final nutrients
+        portion_parts = []
+        final_p = final_c = final_f = final_cal = 0
+        
+        for clean_name, weight, density, unit in final_items:
+            portion_parts.append(f"{int(weight)}{unit} {clean_name}")
+            final_p += weight * density["p"]
+            final_c += weight * density["c"]
+            final_f += weight * density["f"]
+            final_cal += weight * density["cal"]
         
         # Build calculated meal
         calculated_meal = meal.copy()
-        # Use + as separator as requested
         calculated_meal["portion_size"] = " + ".join(portion_parts)
         calculated_meal["nutrients"] = {
             "p": round(final_p, 1),
@@ -1213,6 +1227,21 @@ def _force_macro_compliance(work_items: List[Dict], target_cal: float, target_p:
             # Hard limit for everything else
             w["weight"] = min(w["weight"], 600)
             w["weight"] = max(10, w["weight"])
+    
+    # [FIX] Re-normalize calories after hard limits clipped weights
+    # Hard limits can break the calorie total. Re-scale scalable items.
+    post_clip_cal = sum(w["weight"] * w["density"]["cal"] for w in work_items)
+    if post_clip_cal > 0 and abs(post_clip_cal - target_cal) / target_cal > 0.03:
+        scalable = [w for w in work_items if w.get("scalable", True) and not w.get("fixed", False)]
+        if scalable:
+            fixed_cal = sum(w["weight"] * w["density"]["cal"] for w in work_items if w not in scalable)
+            scalable_cal = post_clip_cal - fixed_cal
+            needed = target_cal - fixed_cal
+            if scalable_cal > 0 and needed > 0:
+                rescale = needed / scalable_cal
+                for w in scalable:
+                    w["weight"] *= rescale
+                    w["weight"] = max(10, w["weight"])
 
 
 def _detect_targeted_meals(prompt: str) -> List[str]:
@@ -2101,31 +2130,19 @@ RULES:
     total_metrics = {"p": 0, "c": 0, "f": 0, "cal": 0}
 
     for item in generated_meals:
-        # --- STRICT DB ENFORCEMENT START ---
-        # Recalculate nutrients from the final portion string to ensure DB consistency
-        # This overrides any LLM-estimated or optimization-drifted values
-        try:
-            db_analysis = calculate_meal_macros_from_db(db, item.get("portion_size", ""))
-            
-            # Override nutrients with strict DB values
-            item["nutrients"] = {
-                "p": round(db_analysis["total_p"], 1),
-                "c": round(db_analysis["total_c"], 1),
-                "f": round(db_analysis["total_f"], 1),
-                "cal": round(db_analysis["total_cal"])
-            }
-            # Log the override
-            # print(f"  🔒 Strict DB Enforcement for {item.get('meal_id')}: {item['nutrients']}")
-        except Exception as e:
-            logger.error(f"Failed to enforce DB consistency for {item.get('meal_id')}: {e}")
-        # --- STRICT DB ENFORCEMENT END ---
+        # [FIX] Removed redundant DB enforcement re-lookup.
+        # Phase 2 (calculate_portions_from_dishes) already uses DB data via ingredient_mapper.
+        # Re-parsing portion strings here caused nutrient drift due to different food item matches.
+        # The nutrients from Phase 2 are the source of truth.
 
         nutrients = item.get("nutrients", {})
         
         p = float(nutrients.get("p", 0))
         c = float(nutrients.get("c", 0))
         f = float(nutrients.get("f", 0))
-        cal = (p * 4) + (c * 4) + (f * 9)
+        # [FIX] Use actual calorie value from Phase 2 calculation, not Atwater formula.
+        # Atwater (p*4 + c*4 + f*9) gives different values than DB's calories_kcal.
+        cal = float(nutrients.get("cal", 0))
         
         total_metrics["p"] += p
         total_metrics["c"] += c
@@ -2154,12 +2171,15 @@ RULES:
         db.add(meal_entry)
         saved_entries.append(meal_entry)
     
-    # Update Profile with Generated Totals
-    profile.calories = total_metrics["cal"]
-    profile.protein = total_metrics["p"]
-    profile.carbs = total_metrics["c"]
-    profile.fat = total_metrics["f"]
-    profile.skip_macro_calculation = True 
+    # [FIX] Do NOT overwrite profile targets with generated totals.
+    # Profile targets must always reflect the user's calculated base nutritional needs
+    # (from nutrition_service.calculate_daily_targets), not what a specific plan generated.
+    # Overwriting caused compounding drift: a 30% excess would become the new "target".
+    # profile.calories = total_metrics["cal"]  # REMOVED
+    # profile.protein = total_metrics["p"]     # REMOVED 
+    # profile.carbs = total_metrics["c"]       # REMOVED
+    # profile.fat = total_metrics["f"]         # REMOVED
+    # profile.skip_macro_calculation = True    # REMOVED
     
     db.commit()
     

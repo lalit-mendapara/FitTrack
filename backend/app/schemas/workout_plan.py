@@ -59,6 +59,7 @@ class WorkoutPlanRequestData(BaseModel):
     workout_preferences: WorkoutPreferencesInput
     custom_prompt: Optional[str] = None
     ignore_history: bool = False
+    start_from_today: bool = False
 
 class WorkoutPlanRequest(BaseModel):
     workout_request: WorkoutPlanRequestData

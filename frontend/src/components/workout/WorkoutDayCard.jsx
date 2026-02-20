@@ -24,34 +24,34 @@ const WorkoutDayCard = ({ dayPlan, onSeeExercises, date }) => {
 
       <div className="p-8 relative z-10 flex flex-col h-full">
         <div className="flex flex-col gap-4 mb-6">
-            <div className="flex items-start justify-between">
+            <div className="flex items-start justify-between gap-3">
                  <div className="flex items-center gap-3">
-                    <div className={`w-16 h-16 rounded-2xl flex flex-col items-center justify-center text-white shadow-lg shrink-0
+                    <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex flex-col items-center justify-center text-white shadow-lg shrink-0
                         ${isFeastMode ? 'bg-linear-to-br from-purple-500 to-indigo-600 shadow-purple-200' : 'bg-linear-to-br from-indigo-500 to-purple-600 shadow-indigo-200'}`}>
                         {/* Display Date Day */}
-                        <span className="text-xs font-medium opacity-80 uppercase tracking-widest">{dayPlan.day_name.substring(0, 3)}</span>
-                        <span className="text-2xl font-black leading-none">{dateDisplay.split(' ')[1]}</span>
+                        <span className="text-[10px] sm:text-xs font-medium opacity-80 uppercase tracking-widest">{dayPlan.day_name.substring(0, 3)}</span>
+                        <span className="text-xl sm:text-2xl font-black leading-none">{dateDisplay.split(' ')[1]}</span>
                     </div>
                 </div>
                 {/* Stats Badge */}
-                <div className="flex gap-2 self-start flex-col items-end">
+                <div className="flex gap-1.5 sm:gap-2 self-start flex-col items-end">
                      {/* Feast Badge */}
                      {isFeastMode && (
                          <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-[10px] font-bold uppercase tracking-wide rounded-full border border-purple-200">
                              Feast Mode
                          </span>
                      )}
-                     <div className="flex gap-2">
+                     <div className="flex flex-wrap justify-end gap-1.5 sm:gap-2">
                         {/* Time Badge */}
-                        <div className="px-3 py-1 bg-indigo-50 rounded-lg flex items-center gap-1.5 border border-indigo-100/50">
-                            <Timer size={14} className="text-indigo-600" />
-                            <span className="text-xs font-bold text-gray-700">{dayPlan.session_duration_min} Min</span>
+                        <div className="px-2 py-0.5 sm:px-3 sm:py-1 bg-indigo-50 rounded-lg flex items-center gap-1 sm:gap-1.5 border border-indigo-100/50">
+                            <Timer size={12} className="text-indigo-600 sm:w-3.5 sm:h-3.5 w-3 h-3" />
+                            <span className="text-[10px] sm:text-xs font-bold text-gray-700">{dayPlan.session_duration_min} Min</span>
                         </div>
                         {/* Calorie Badge */}
                         {totalDailyBurn > 0 && (
-                            <div className={`px-3 py-1 rounded-lg flex items-center gap-1.5 border ${isFeastMode ? 'bg-purple-50 border-purple-100/50' : 'bg-red-50 border-red-100/50'}`}>
-                                <Zap size={14} className={`fill-current ${isFeastMode ? 'text-purple-500' : 'text-red-500'}`} />
-                                <span className="text-xs font-bold text-gray-700">{totalDailyBurn} Kcal</span>
+                            <div className={`px-2 py-0.5 sm:px-3 sm:py-1 rounded-lg flex items-center gap-1 sm:gap-1.5 border ${isFeastMode ? 'bg-purple-50 border-purple-100/50' : 'bg-red-50 border-red-100/50'}`}>
+                                <Zap size={12} className={`fill-current sm:w-3.5 sm:h-3.5 w-3 h-3 ${isFeastMode ? 'text-purple-500' : 'text-red-500'}`} />
+                                <span className="text-[10px] sm:text-xs font-bold text-gray-700">{totalDailyBurn} Kcal</span>
                             </div>
                         )}
                      </div>
@@ -76,17 +76,7 @@ const WorkoutDayCard = ({ dayPlan, onSeeExercises, date }) => {
         <div className="bg-gray-50/80 rounded-2xl p-5 border border-gray-100 mb-8 backdrop-blur-sm flex-1">
             <h4 className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-2">Primary Muscle Group</h4>
             <p className="text-gray-600 text-sm leading-relaxed font-medium line-clamp-4">
-                {isFeastMode ? (
-                    (dayPlan.workout_name?.toLowerCase().includes('cardio') || 
-                     dayPlan.workout_name?.toLowerCase().includes('metabolic') ||
-                     dayPlan.workout_name?.toLowerCase().includes('burn')) ? "Cardio & Core" : 
-                    (dayPlan.workout_name?.toLowerCase().includes('strength') ||
-                     dayPlan.workout_name?.toLowerCase().includes('depletion') ||
-                     dayPlan.workout_name?.toLowerCase().includes('volume')) ? "Chest & Triceps" : // Default strength example or could be generic
-                    "Full Body & Core" // Fallback for Feast Mode generic
-                ) : (
-                    dayPlan.primary_muscle_group || dayPlan.focus
-                )}
+                {dayPlan.primary_muscle_group || dayPlan.focus}
             </p>
         </div>
 

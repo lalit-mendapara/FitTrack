@@ -144,7 +144,7 @@ const WorkoutCalendar = ({ isLocked = false, currentWeekOffset = 0, onWeekChange
             {/* Calendar Grid */}
             <div className="overflow-x-auto pb-2 -mx-4 px-4 sm:overflow-visible sm:mx-0 sm:px-0 scrollbar-hide">
                 <div className="grid grid-cols-7 gap-3 mb-6 min-w-262.5 sm:min-w-0">
-                    {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
+                    {(data?.plan_day_order || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']).map((day) => (
                         <div key={day} className="text-center text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
                             {day}
                         </div>

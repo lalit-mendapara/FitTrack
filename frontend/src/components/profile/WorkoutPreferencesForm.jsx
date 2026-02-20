@@ -64,13 +64,13 @@ const WorkoutPreferencesForm = ({ existingData, onSuccess, onUpdateStart, onUpda
                 {/* Experience Level */}
                 <div className="space-y-4">
                     <label className="block text-sm font-medium text-gray-700">Experience Level</label>
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="flex flex-wrap gap-2 sm:gap-3">
                         {['beginner', 'intermediate', 'advanced'].map((level) => (
                             <button
                                 key={level}
                                 type="button"
                                 onClick={() => setFormData(prev => ({ ...prev, experience_level: level }))}
-                                className={`py-3 px-4 rounded-lg capitalize transition-colors border-2 font-medium ${
+                                className={`flex-1 min-w-[100px] py-2 px-2 sm:py-3 sm:px-4 rounded-lg capitalize transition-colors border-2 font-medium text-xs sm:text-base ${
                                     formData.experience_level === level
                                     ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
                                     : 'border-gray-200 hover:border-indigo-200 text-gray-600'

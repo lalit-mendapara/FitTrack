@@ -47,6 +47,11 @@ const ExerciseList = ({ dayPlan, onBack, onGenerate, onGenerateCustom, isGenerat
             </button>
             <div>
                 <h2 className="text-3xl font-black text-gray-900 leading-none">{dayPlan.day_name}</h2>
+                {dayPlan.workout_name && (
+                    <h3 className={`text-xl font-bold mt-2 ${dayPlan.workout_split?.toLowerCase().includes('feast') || dayPlan.workout_name?.toLowerCase().includes('feast') ? 'text-purple-600' : 'text-indigo-600'}`}>
+                        {dayPlan.workout_name}
+                    </h3>
+                )}
                 <div className="flex items-center gap-2 mt-2">
                     {dayPlan.primary_muscle_group && (
                         <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-md border border-indigo-100 uppercase tracking-wide">

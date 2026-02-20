@@ -708,13 +708,28 @@ Adjust calories, protein, carbs, fat, portion_size.
         if not reference_date:
             reference_date = date.today()
             
-        # Check Week Alignment
-        # Calculate start of week (Monday) for both dates
-        event_week_start = config.event_date - timedelta(days=config.event_date.weekday())
-        ref_week_start = reference_date - timedelta(days=reference_date.weekday())
+        # Calculate the plan's 7-day window matching the frontend logic
+        day1_data = workout_plan_schedule.get("day1", {})
+        day1_name = day1_data.get("day_name")
+        if not day1_name:
+            return workout_plan_schedule
+            
+        all_day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        if day1_name not in all_day_names:
+            return workout_plan_schedule
+            
+        day1_idx = all_day_names.index(day1_name)
+        ref_idx = reference_date.weekday()
         
-        if event_week_start != ref_week_start:
-            # Event is in a different week -> Do not inject
+        diff = day1_idx - ref_idx
+        if diff > 0:
+            diff -= 7
+            
+        day1_date = reference_date + timedelta(days=diff)
+        day7_date = day1_date + timedelta(days=6)
+        
+        if config.event_date < day1_date or config.event_date > day7_date:
+            # Event date is outside the currently displayed 7-day plan window
             return workout_plan_schedule
 
         # Check if event date matches any day in the schedule
@@ -729,6 +744,7 @@ Adjust calories, protein, carbs, fat, portion_size.
                 if isinstance(feast_data, dict):
                     # We merge/replace to preserve structure but update content
                     day_data["workout_name"] = feast_data.get("workout_name", "Feast Mode Workout")
+                    day_data["primary_muscle_group"] = feast_data.get("primary_muscle_group", "Full Body")
                     day_data["focus"] = feast_data.get("focus", "Glycogen Depletion")
                     day_data["exercises"] = feast_data.get("exercises", [])
                     day_data["cardio_exercises"] = feast_data.get("cardio_exercises", [])

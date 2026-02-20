@@ -352,13 +352,13 @@ const UnifiedProfileForm = ({ existingProfile, existingPreferences, onSuccess, o
                              {/* Experience Level */}
                             <div>
                                 <label className="block text-sm font-bold text-gray-700 mb-3">Experience Level</label>
-                                <div className="grid grid-cols-3 gap-4">
+                                <div className="flex flex-wrap gap-2 sm:gap-4">
                                     {['beginner', 'intermediate', 'advanced'].map((level) => (
                                         <button
                                             key={level}
                                             type="button"
                                             onClick={() => setFormData(prev => ({ ...prev, experience_level: level }))}
-                                            className={`py-3 px-4 rounded-xl capitalize transition-all border-2 font-bold ${
+                                            className={`flex-1 min-w-[100px] py-2 px-2 sm:py-3 sm:px-4 rounded-xl capitalize transition-all border-2 font-bold text-[13px] sm:text-base ${
                                                 formData.experience_level === level
                                                 ? 'border-indigo-600 bg-indigo-50 text-indigo-700 shadow-sm'
                                                 : 'border-gray-200 bg-white hover:border-indigo-200 text-gray-500'

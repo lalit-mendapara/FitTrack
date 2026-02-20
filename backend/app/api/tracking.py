@@ -890,12 +890,23 @@ def get_workout_calendar(
     # Plan Duration (default 8 weeks)
     plan_duration = plan.duration_weeks or 8
     
-    # Calculate effective start date (Monday of the creation week)
-    # If no created_at, assume today
-    raw_start_date = plan.created_at.date() if plan.created_at else DateType.today()
-    # Align to Monday: Monday=0, Sunday=6. Subtract weekday() days.
-    # e.g. Wed (2) -> Subtract 2 days -> Mon.
-    start_date = raw_start_date - timedelta(days=raw_start_date.weekday())
+    # --- Determine the plan's week start day from day1 ---
+    plan_start_weekday = 0  # Default: Monday
+    if plan.weekly_schedule and isinstance(plan.weekly_schedule, dict):
+        # Sort by key: day1, day2, ..., day7
+        sorted_keys = sorted(plan.weekly_schedule.keys(), key=lambda k: int(k.replace('day', '')) if k.startswith('day') else 999)
+        if sorted_keys:
+            day1_data = plan.weekly_schedule.get(sorted_keys[0], {})
+            day1_name = day1_data.get("day_name", "Monday") if isinstance(day1_data, dict) else "Monday"
+            weekday_name_to_idx = {"Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3, "Friday": 4, "Saturday": 5, "Sunday": 6}
+            plan_start_weekday = weekday_name_to_idx.get(day1_name, 0)
+    
+    # Calculate effective start date (aligned to plan's start weekday of the last regeneration)
+    # Use updated_at (not created_at) because regeneration updates the plan row in-place
+    raw_start_date = plan.updated_at.date() if plan.updated_at else (plan.created_at.date() if plan.created_at else DateType.today())
+    # Align to plan's start weekday
+    days_since_start_weekday = (raw_start_date.weekday() - plan_start_weekday) % 7
+    start_date = raw_start_date - timedelta(days=days_since_start_weekday)
     
     today = DateType.today() 
     
@@ -908,8 +919,9 @@ def get_workout_calendar(
     # Apply requested offset
     target_week_index = current_cycle_week_index + week_offset
     
-    # Let's simplify: Anchor to "Current Real Week"
-    current_week_start = today - timedelta(days=today.weekday()) # This Monday
+    # Anchor to "Current Real Week" based on plan's start weekday
+    days_since_plan_weekday = (today.weekday() - plan_start_weekday) % 7
+    current_week_start = today - timedelta(days=days_since_plan_weekday)
     
     # Target Week Start
     target_week_start = current_week_start + timedelta(weeks=week_offset)
@@ -953,18 +965,24 @@ def get_workout_calendar(
     # 4. Build 7-Day View
     days_data = []
     
-    # Parse Schedule
+    # Parse Schedule - map day_name to schedule data
     schedule_map = {}
+    # Also build ordered day names from the plan's schedule
+    plan_day_order = []
     try:
         if isinstance(plan.weekly_schedule, dict):
-            for k, v in plan.weekly_schedule.items():
+            sorted_keys = sorted(plan.weekly_schedule.keys(), key=lambda k: int(k.replace('day', '')) if k.startswith('day') else 999)
+            for k in sorted_keys:
+                v = plan.weekly_schedule[k]
                 if isinstance(v, dict) and "day_name" in v:
                     schedule_map[v["day_name"]] = v
+                    plan_day_order.append(v["day_name"])
     except Exception as e:
         print(f"Error parsing weekly_schedule: {e}")
-                
-    # Day Names in order
-    week_days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    
+    # Fallback: if plan_day_order is empty, use standard Mon-Sun
+    if not plan_day_order:
+        plan_day_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
     
     # Check for Active Feast Config (for dynamic injection)
     from app.models.feast_config import FeastConfig
@@ -977,7 +995,7 @@ def get_workout_calendar(
     
     current_d = target_week_start
     for i in range(7):
-        day_name = week_days[i]
+        day_name = plan_day_order[i] if i < len(plan_day_order) else ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"][i]
         date_str = current_d.strftime("%Y-%m-%d")
         
         # Get Template
@@ -1061,7 +1079,8 @@ def get_workout_calendar(
         "current_week": template_week_num, # 1 to 8
         "total_weeks": plan_duration,
         "week_offset": week_offset,
-        "date_range": date_range_p, # "Feb 03 - Feb 09"
+        "date_range": date_range_p, # "Feb 20 - Feb 26"
+        "plan_day_order": [d[:3] for d in plan_day_order],  # Short names: ["Fri", "Sat", "Sun", ...]
         "days": days_data
     }
 

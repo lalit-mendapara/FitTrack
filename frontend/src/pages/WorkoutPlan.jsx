@@ -77,32 +77,49 @@ const WorkoutPlan = ({ isEmbedded = false, onPlanGenerated }) => {
   const selectedDay = (plan && activeDayKey && plan.weekly_schedule) ? plan.weekly_schedule[activeDayKey] : null;
   const view = selectedDay ? 'detail' : 'overview';
 
-  // Helper: Calculate date for a specific day name (assuming current week)
+  // Helper: Calculate date for a specific day name based on the plan's week order
   const getDateForDay = (dayName) => {
     if (!dayName) return new Date().toISOString().split('T')[0];
-    
+    if (!plan?.weekly_schedule) return new Date().toISOString().split('T')[0];
+
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const today = new Date();
-    const currentDayIndex = today.getDay(); // 0-6 (Sun-Sat)
-    
-    // Simple normalization to handle case variations if any
-    const targetDayIndex = days.findIndex(d => d.toLowerCase() === dayName.toLowerCase());
-    
-    if (targetDayIndex === -1) return today.toISOString().split('T')[0];
-    
-    // Calculate difference
-    // Logic: We want the day within the "current" week window surrounding today?
-    // Or strictly "This (past/coming) Monday"?
-    // Standard interpretation: The Monday of *this week* (Sun-Sat or Mon-Sun).
-    // Let's align with Mon-Sun ISO week for fitness apps usually.
-    // If today is Wednesday, Monday is -2.
-    // If today is Sunday, Monday was -6 (or +1 next week? usually past).
-    
-    // Robust approach: Difference from today.
-    const diff = targetDayIndex - currentDayIndex;
-    const targetDate = new Date(today);
-    targetDate.setDate(today.getDate() + diff);
-    
+
+    // Sort schedule entries by key: day1, day2, ..., day7
+    const scheduleEntries = Object.entries(plan.weekly_schedule)
+      .sort(([a], [b]) => parseInt(a.replace('day', '')) - parseInt(b.replace('day', '')));
+
+    if (scheduleEntries.length === 0) return today.toISOString().split('T')[0];
+
+    // Get day1's weekday name (the plan's starting weekday)
+    const day1Name = scheduleEntries[0][1]?.day_name;
+    if (!day1Name) return today.toISOString().split('T')[0];
+
+    const day1WeekdayIdx = days.findIndex(d => d.toLowerCase() === day1Name.toLowerCase());
+    const todayWeekdayIdx = today.getDay(); // 0=Sun
+
+    // Calculate day1's actual calendar date
+    // Find the most recent occurrence of day1's weekday (including today)
+    let diff = day1WeekdayIdx - todayWeekdayIdx;
+    if (diff > 0) diff -= 7; // Go backward to find the most recent occurrence
+    const day1Date = new Date(today);
+    day1Date.setDate(today.getDate() + diff);
+
+    // Find the target day's sequential index in the plan (0-based)
+    let targetIdx = -1;
+    for (let i = 0; i < scheduleEntries.length; i++) {
+      if (scheduleEntries[i][1]?.day_name?.toLowerCase() === dayName.toLowerCase()) {
+        targetIdx = i;
+        break;
+      }
+    }
+
+    if (targetIdx === -1) return today.toISOString().split('T')[0];
+
+    // Target date = day1Date + targetIdx days
+    const targetDate = new Date(day1Date);
+    targetDate.setDate(day1Date.getDate() + targetIdx);
+
     return targetDate.toISOString().split('T')[0];
   };
 
@@ -165,7 +182,7 @@ const WorkoutPlan = ({ isEmbedded = false, onPlanGenerated }) => {
           setShowResetConfirmation(false); 
           toast.info("All logs cleared successfully");
           
-          generatePlan(pendingPrompt, { ignore_history: true });
+          generatePlan(pendingPrompt, { ignore_history: true, start_from_today: true });
       } catch (e) {
           toast.error("Failed to clear logs. Please try again.");
       }
@@ -200,7 +217,7 @@ const WorkoutPlan = ({ isEmbedded = false, onPlanGenerated }) => {
                   setShowHistoryModal(true);
               } else {
                   // No history, just generate
-                  generatePlan(prompt);
+                  generatePlan(prompt, { start_from_today: true });
               }
           } catch (e) {
               // Fallback if check fails
@@ -216,7 +233,7 @@ const WorkoutPlan = ({ isEmbedded = false, onPlanGenerated }) => {
           setHasSession(false);
           setShowHistoryModal(false);
           
-          generatePlan(pendingPrompt, { ignore_history: true });
+          generatePlan(pendingPrompt, { ignore_history: true, start_from_today: true });
       } catch (e) {
           toast.error("Failed to clear logs.");
       }
@@ -498,9 +515,12 @@ const WorkoutPlan = ({ isEmbedded = false, onPlanGenerated }) => {
                            <Calendar size={12} className="text-gray-500" />
                            <span>
                                {(() => {
-                                   // Calculate start and end of week (Sunday to Saturday based on getDateForDay logic)
-                                   const start = new Date(getDateForDay('Sunday'));
-                                   const end = new Date(getDateForDay('Saturday'));
+                                   const entries = Object.entries(plan.weekly_schedule)
+                                     .sort(([a], [b]) => parseInt(a.replace('day', '')) - parseInt(b.replace('day', '')));
+                                   const firstName = entries[0]?.[1]?.day_name;
+                                   const lastName = entries[entries.length - 1]?.[1]?.day_name;
+                                   const start = new Date(getDateForDay(firstName));
+                                   const end = new Date(getDateForDay(lastName));
                                    const options = { month: 'short', day: 'numeric' };
                                    return `${start.toLocaleDateString('en-US', options)} - ${end.toLocaleDateString('en-US', options)}`;
                                })()}

@@ -132,7 +132,12 @@ const Dashboard = () => {
                            isEmbedded={true} 
                            onGenerateStart={() => setIsUpdating(true)}
                            onGenerateEnd={() => setIsUpdating(false)}
-                           onPlanGenerated={() => setHasDietPlan(true)}
+                           onPlanGenerated={() => {
+                               setHasDietPlan(true);
+                               setTimeout(() => {
+                                   setSearchParams({ tab: 'diet-plan' });
+                               }, 2100);
+                           }}
                        />;
             case 'workout-plan':
                 if (loadingProfile) return <div>Loading...</div>;
@@ -152,7 +157,12 @@ const Dashboard = () => {
                            isEmbedded={true}
                            onGenerateStart={() => setIsUpdating(true)}
                            onGenerateEnd={() => setIsUpdating(false)}
-                           onPlanGenerated={() => setHasWorkoutPlan(true)}
+                           onPlanGenerated={() => {
+                               setHasWorkoutPlan(true);
+                               setTimeout(() => {
+                                   setSearchParams({ tab: 'workout-plan' });
+                               }, 2100);
+                           }}
                        />;
             case 'ai-coach':
                 return <AICoach />;
@@ -166,6 +176,36 @@ const Dashboard = () => {
                            onUpdateProfile={() => setSearchParams({ tab: 'update-profile' })}
                        />;
         }
+    };
+
+    const handleTabChange = (tabId) => {
+        if (loadingProfile) return;
+
+        if (tabId === 'workout-plan') {
+            if (!hasPhysicalProfile || !hasWorkoutPreferences) {
+                if (hasPhysicalProfile && !hasWorkoutPreferences) {
+                    toast.info("Please set your Workout Preferences in Profile to access this.", {
+                        autoClose: 3000
+                    });
+                    setSearchParams({ tab: 'update-profile' });
+                }
+                return;
+            }
+        } else if (tabId === 'dashboard-overview' || tabId === 'ai-coach') {
+            if (!hasDietPlan && !hasWorkoutPlan) {
+                toast.info("Please generate a Diet Plan or Workout Plan to unlock the Dashboard and AI Coach.", {
+                    autoClose: 3000
+                });
+                if (hasPhysicalProfile) {
+                    setSearchParams({ tab: 'diet-plan' });
+                }
+                return;
+            }
+        } else if (tabId === 'diet-plan') {
+            if (!hasPhysicalProfile) return;
+        }
+
+        setSearchParams({ tab: tabId });
     };
 
     const navItems = [
@@ -236,26 +276,7 @@ const Dashboard = () => {
                     {navItems.map((item) => (
                         <button
                             key={item.id}
-                            onClick={() => {
-                                if (item.locked) {
-                                    if (item.id === 'workout-plan' && hasPhysicalProfile && !hasWorkoutPreferences) {
-                                        toast.info("Please set your Workout Preferences in Profile to access this.", {
-                                            autoClose: 3000
-                                        });
-                                        setSearchParams({ tab: 'update-profile' });
-                                    } else if ((item.id === 'dashboard-overview' || item.id === 'ai-coach') && (!hasDietPlan && !hasWorkoutPlan)) {
-                                         toast.info("Please generate a Diet Plan or Workout Plan to unlock the Dashboard and AI Coach.", {
-                                            autoClose: 3000
-                                        });
-                                         // Redirect to diet plan if available, else profile (handled by profile check)
-                                         if (hasPhysicalProfile) {
-                                             setSearchParams({ tab: 'diet-plan' });
-                                         }
-                                    }
-                                    return;
-                                }
-                                setSearchParams({ tab: item.id });
-                            }}
+                            onClick={() => handleTabChange(item.id)}
                             className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 text-sm font-medium ${
                                 activeSection === item.id
                                     ? 'bg-indigo-50 text-indigo-700 shadow-sm ring-1 ring-indigo-200'
@@ -340,7 +361,12 @@ const Dashboard = () => {
                 {/* Mobile Bottom Navigation */}
                 <MobileBottomNav 
                     activeTab={activeSection} 
-                    onTabChange={(id) => setSearchParams({ tab: id })} 
+                    onTabChange={handleTabChange} 
+                    hasPhysicalProfile={hasPhysicalProfile}
+                    hasWorkoutPreferences={hasWorkoutPreferences}
+                    hasDietPlan={hasDietPlan}
+                    hasWorkoutPlan={hasWorkoutPlan}
+                    loadingProfile={loadingProfile}
                 />
 
                 <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-50 p-4 md:p-10 pb-24 md:pb-10">

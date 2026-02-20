@@ -158,6 +158,9 @@ const Chatbot = () => {
         }
     };
 
+    const handleFeastProposal = async ({ eventName, eventDate, selectedMeals }) => {
+        setFeastLoading(true);
+        try {
             // Mark setup as static (completed)
             updateCustomContent('feast_setup', { isStatic: true, selectedData: { eventName, eventDate, selectedMeals } });
             
@@ -628,7 +631,7 @@ const Chatbot = () => {
                                             )}
                                         </>
                                     ) : msg.type === 'ai' ? (
-                                        <div className="prose prose-sm dark:prose-invert max-w-none prose-emerald prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-li:my-0">
+                                        <div className="prose prose-sm dark:prose-invert max-w-none prose-emerald prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-li:my-0 break-words overflow-x-auto">
                                             <ReactMarkdown remarkPlugins={[remarkGfm]}>
                                                 {msg.text}
                                             </ReactMarkdown>
