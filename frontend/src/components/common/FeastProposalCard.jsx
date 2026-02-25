@@ -45,6 +45,11 @@ const FeastProposalCard = ({ proposal, onConfirm, onCancel, onBack, loading, isS
     const displayBanked = isStatic ? proposal.total_banked : totalBanked;
     const displayWorkout = isStatic ? proposal.workout_preference : workoutPref;
 
+    const getAdjustingText = () => {
+        if (!proposal.selected_meals || proposal.selected_meals.length === 0) return 'All Meals';
+        return proposal.selected_meals.map(m => m.charAt(0).toUpperCase() + m.slice(1)).join(', ');
+    };
+
     return (
          <div className="animate-in fade-in zoom-in bg-white p-6 rounded-xl border border-green-100 shadow-md w-full max-w-sm">
             <div className="flex items-center gap-3 mb-4">
@@ -53,12 +58,23 @@ const FeastProposalCard = ({ proposal, onConfirm, onCancel, onBack, loading, isS
                 </div>
                 <div>
                      <h3 className="text-lg font-bold text-gray-900 leading-tight">Feast Mode Active</h3>
-                     <p className="text-xs text-gray-500">Plan updated for {proposal.event_name}</p>
                 </div>
             </div>
 
             <div className="space-y-3 bg-gray-50 p-4 rounded-xl border border-gray-100">
                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-gray-600 font-medium">Event</span>
+                    <span className="text-gray-900 font-bold text-right max-w-[150px] truncate" title={proposal.event_name}>{proposal.event_name}</span>
+                 </div>
+                 <div className="flex justify-between items-center text-sm">
+                    <span className="text-gray-600 font-medium">Date</span>
+                    <span className="text-gray-900 font-bold">{proposal.event_date.split('T')[0]}</span>
+                 </div>
+                 <div className="flex justify-between items-center text-sm">
+                    <span className="text-gray-600 font-medium">Adjusting</span>
+                    <span className="text-gray-900 font-bold text-right max-w-[150px] truncate" title={getAdjustingText()}>{getAdjustingText()}</span>
+                 </div>
+                 <div className="flex justify-between items-center text-sm pt-2 border-t border-gray-200 mt-2">
                     <span className="text-gray-600 font-medium">Daily Reduction</span>
                     <span className="text-gray-900 font-bold">-{displayDeduction} kcal</span>
                  </div>

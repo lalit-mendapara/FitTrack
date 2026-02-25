@@ -109,11 +109,13 @@ const FeastModeBanner = ({ event, onUpdate }) => {
                         </div>
                         <div className="flex-1 min-w-0">
                             <h3 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2 flex-wrap">
-                                It's Feast Day: {event.event_name}!
+                                🎉 It's Feast Day: {event.event_name}!
                             </h3>
                             <p className="text-gray-600 text-sm mt-1 wrap-break-word">
-                                Your calorie target is boosted by <strong>+{event.target_bank_calories} kcal</strong> today. 
-                                Enjoy your meal!
+                                Your banked <strong>+{event.target_bank_calories} kcal</strong> are added into today's plan — enjoy your feast day without any hesitation!
+                            </p>
+                            <p className="text-gray-400 text-xs mt-1">
+                                Macros are as per your regular plan.
                             </p>
                         </div>
                     </div>

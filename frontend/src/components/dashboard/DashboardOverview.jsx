@@ -71,7 +71,10 @@ const DashboardOverview = ({ hasDietPlan, hasWorkoutPlan }) => {
         setWorkoutData(data);
     }, []);
 
-    const baseCaloriesTarget = plan?.daily_generated_totals?.calories || dietData.caloriesTarget;
+    const isFeastDay = feastStatus?.status === 'FEAST_DAY';
+    const baseCaloriesTarget = isFeastDay && feastStatus
+        ? Math.round(feastStatus.effective_calories)
+        : (plan?.daily_generated_totals?.calories || dietData.caloriesTarget);
 
     const progressPercent = baseCaloriesTarget > 0 
         ? Math.min((dietData.totalCalories / baseCaloriesTarget) * 100, 100)

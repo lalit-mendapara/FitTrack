@@ -348,7 +348,9 @@ const DietPlan = ({ isEmbedded = false, onPlanGenerated }) => {
                     </p>
                   ) : feastStatus && feastStatus.status === 'FEAST_DAY' ? (
                     <p className="text-sm font-semibold text-amber-600 mt-1 flex items-center gap-1.5 flex-wrap">
-                      Feast Day: +{feastStatus.target_bank_calories} kcal bonus for <span className="font-black">{feastStatus.event_name}</span>
+                      🎉 Banked <span className="font-black">+{feastStatus.target_bank_calories} kcal</span> added to today's plan for <span className="font-black">{feastStatus.event_name}</span>
+                      <span className="text-gray-400 mx-1">•</span>
+                      Macros as per regular plan
                     </p>
                   ) : (
                     <p className="text-sm text-gray-500 font-medium max-w-sm mx-auto lg:mx-0">
@@ -361,10 +363,10 @@ const DietPlan = ({ isEmbedded = false, onPlanGenerated }) => {
                {plan && (
                  <div className="flex flex-wrap justify-center gap-3 sm:gap-6">
                      <NutrientMeter 
-                        value={plan.daily_generated_totals?.calories || 0} 
+                        value={feastStatus?.status === 'FEAST_DAY' ? Math.round(feastStatus.effective_calories) : (plan.daily_generated_totals?.calories || 0)} 
                         label="Calories" 
                         unit="" 
-                        color="#6366f1" 
+                        color={feastStatus?.status === 'FEAST_DAY' ? '#f59e0b' : '#6366f1'}
                         icon={Zap}
                         total={2500}
                      />

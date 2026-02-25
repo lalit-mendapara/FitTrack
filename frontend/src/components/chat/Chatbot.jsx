@@ -183,15 +183,11 @@ const Chatbot = () => {
         try {
             await feastModeService.activate(proposalData, true); // workout_boost is handled in data now
             
-            // Mark proposal as static (activated)
-            updateCustomContent('feast_proposal', { isStatic: true });
+            // Mark proposal as static (activated) and pass the data so it displays all details statically
+            updateCustomContent('feast_proposal', { isStatic: true, data: proposalData });
             
-            // Success Message (Card handles visual success state)
-            setMessages(prev => [...prev, { 
-                type: 'ai', 
-                text: `🎉 **Feast Mode Activated!**`,
-                // Note: The Card component itself will switch to "Success" view
-            }]);
+            // Remove the setup card entirely from the chat view locally
+            setMessages(prev => prev.filter(msg => msg.customContent?.type !== 'feast_setup'));
             
             // Refresh Status
             await checkFeastStatus();

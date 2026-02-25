@@ -300,24 +300,17 @@ const AICoach = () => {
                         data: proposalData
                     });
                 }
+
+                // Sweep and delete setup cards from backend history
+                const setupMsgs = history.filter(m => m.custom_content?.type === 'feast_setup');
+                for (const msg of setupMsgs) {
+                    await deleteChatMessage(msg.id);
+                }
             } catch (e) { console.error("Persist activation sweep failed", e); }
 
-            // Success Message
-            const successText = `🎉 **Feast Mode Activated!**`;
-            const customContent = { isStatic: true }; // Just a marker or maybe keep proposal data if needed?
-            // Actually, usually this success message might not need custom content unless we want to show a card.
-            // But let's keep it simple text for now, or if there was a card, same pattern.
-            // The user prompt implied just text.
-            
-            const savedMsg = await addChatMessage(sessionId, 'assistant', successText);
+            // Remove the setup card entirely from the chat view locally
+            setMessages(prev => prev.filter(msg => msg.customContent?.type !== 'feast_setup'));
 
-            setMessages(prev => [...prev, { 
-                id: savedMsg?.id,
-                type: 'ai', 
-                text: successText,
-                timestamp: new Date().toISOString()
-            }]);
-            
             // Refresh Status
             await checkFeastStatus();
             
