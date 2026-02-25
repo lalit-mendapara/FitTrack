@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import Navbar from '../components/layout/Navbar';
 import WorkoutDayCard from '../components/workout/WorkoutDayCard';
 import ExerciseList from '../components/workout/ExerciseList';
-import { Dumbbell, RefreshCw, MessageSquare, X, ChevronRight, AlertCircle, TrendingUp, HeartPulse, CheckCircle, Calendar } from 'lucide-react';
+import { Dumbbell, RefreshCw, MessageSquare, X, ChevronRight, ChevronLeft, AlertCircle, TrendingUp, HeartPulse, CheckCircle, Calendar } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useWorkoutPlan } from '../hooks/useWorkoutPlan'; // Hook Import
 import { Link, useSearchParams } from 'react-router-dom';
@@ -34,6 +34,9 @@ const WorkoutPlan = ({ isEmbedded = false, onPlanGenerated }) => {
 
   // Feast Mode State
   const [feastStatus, setFeastStatus] = useState(null);
+
+  // Week Navigation State
+  const [currentWeek, setCurrentWeek] = useState(1);
 
   React.useEffect(() => {
     feastModeService.getStatus().then(status => setFeastStatus(status));
@@ -116,9 +119,9 @@ const WorkoutPlan = ({ isEmbedded = false, onPlanGenerated }) => {
 
     if (targetIdx === -1) return today.toISOString().split('T')[0];
 
-    // Target date = day1Date + targetIdx days
+    // Target date = day1Date + targetIdx days + week offset
     const targetDate = new Date(day1Date);
-    targetDate.setDate(day1Date.getDate() + targetIdx);
+    targetDate.setDate(day1Date.getDate() + targetIdx + (currentWeek - 1) * 7);
 
     return targetDate.toISOString().split('T')[0];
   };
@@ -390,13 +393,8 @@ const WorkoutPlan = ({ isEmbedded = false, onPlanGenerated }) => {
                     {plan && (
                         <div className="flex flex-col items-center lg:items-start gap-2 mt-2">
                              <p className="text-sm text-gray-500 font-medium max-w-sm mx-auto lg:mx-0">
-                                {plan.plan_name || "Personalized Plan"} • {plan.duration_weeks || 8} Weeks
+                                Weekly Schedule
                              </p>
-                             {plan.primary_goal && (
-                                <span className="px-3 py-1 bg-indigo-50 text-indigo-700 text-xs font-extrabold uppercase tracking-wider rounded-full border border-indigo-100 shadow-sm">
-                                    {plan.primary_goal.replace(/_/g, " ")}
-                                </span>
-                             )}
                         </div>
                     )}
                 </div>
@@ -510,29 +508,40 @@ const WorkoutPlan = ({ isEmbedded = false, onPlanGenerated }) => {
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 px-1">
                    <div className="flex flex-wrap items-center gap-3">
                        <h2 className="text-2xl font-black text-gray-800 tracking-tight">Weekly Schedule</h2>
-                       {/* Date Duration Badge */}
-                       <div className="px-3 py-1 bg-gray-100 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600 flex items-center gap-1.5">
-                           <Calendar size={12} className="text-gray-500" />
-                           <span>
-                               {(() => {
-                                   const entries = Object.entries(plan.weekly_schedule)
-                                     .sort(([a], [b]) => parseInt(a.replace('day', '')) - parseInt(b.replace('day', '')));
-                                   const firstName = entries[0]?.[1]?.day_name;
-                                   const lastName = entries[entries.length - 1]?.[1]?.day_name;
-                                   const start = new Date(getDateForDay(firstName));
-                                   const end = new Date(getDateForDay(lastName));
-                                   const options = { month: 'short', day: 'numeric' };
-                                   return `${start.toLocaleDateString('en-US', options)} - ${end.toLocaleDateString('en-US', options)}`;
-                               })()}
-                           </span>
+                       {/* Date Duration Badge with Week Navigation */}
+                       <div className="flex items-center gap-2">
+                           <button 
+                               onClick={() => setCurrentWeek(prev => Math.max(1, prev - 1))}
+                               disabled={currentWeek === 1}
+                               className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+                               aria-label="Previous Week"
+                           >
+                               <ChevronLeft size={18} />
+                           </button>
+                           <div className="px-3 py-1 bg-gray-100 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600 flex items-center gap-1.5 min-w-[140px] justify-center">
+                               <Calendar size={12} className="text-gray-500" />
+                               <span>
+                                   {(() => {
+                                       const entries = Object.entries(plan.weekly_schedule)
+                                         .sort(([a], [b]) => parseInt(a.replace('day', '')) - parseInt(b.replace('day', '')));
+                                       const firstName = entries[0]?.[1]?.day_name;
+                                       const lastName = entries[entries.length - 1]?.[1]?.day_name;
+                                       const start = new Date(getDateForDay(firstName));
+                                       const end = new Date(getDateForDay(lastName));
+                                       const options = { month: 'short', day: 'numeric' };
+                                       return `${start.toLocaleDateString('en-US', options)} - ${end.toLocaleDateString('en-US', options)}`;
+                                   })()}
+                               </span>
+                           </div>
+                           <button 
+                               onClick={() => setCurrentWeek(prev => Math.min(plan.duration_weeks || 8, prev + 1))}
+                               disabled={currentWeek >= (plan.duration_weeks || 8)}
+                               className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+                               aria-label="Next Week"
+                           >
+                               <ChevronRight size={18} />
+                           </button>
                        </div>
-                       {/* Fitness Goal Badge - Beside Heading */}
-                       {plan.primary_goal && (
-                           <span className="px-3 py-1 bg-indigo-50 text-indigo-700 text-xs font-bold uppercase tracking-wide rounded-full border border-indigo-100 flex items-center gap-1">
-                               <span className="opacity-70">Goal:</span>
-                               <span>{plan.primary_goal.replace(/_/g, " ")}</span>
-                           </span>
-                       )}
                    </div>
                    <div className="relative w-full md:w-auto flex justify-end" ref={regenerateMenuRef}>
                         <button 
@@ -579,6 +588,7 @@ const WorkoutPlan = ({ isEmbedded = false, onPlanGenerated }) => {
                         dayPlan={day} 
                         date={getDateForDay(day.day_name)}
                         onSeeExercises={() => handleSeeExercises(key)} 
+                        feastStatus={feastStatus}
                     />
                   ))}
                   {!plan.weekly_schedule && (
@@ -597,6 +607,7 @@ const WorkoutPlan = ({ isEmbedded = false, onPlanGenerated }) => {
                         onGenerateCustom={(prompt) => handleGenerateClick(prompt)}
                         isGenerating={generating}
                         targetDate={targetDate}
+                        feastStatus={feastStatus}
                     />
                     
                     {/* Finish Workout Floating Button (or Static at bottom) */}

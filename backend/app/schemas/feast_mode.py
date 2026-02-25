@@ -59,6 +59,7 @@ class FeastStatusResponse(BaseModel):
     workout_boost_enabled: bool
     selected_meals: Optional[List[str]] = None
     original_diet_snapshot: Optional[dict] = None
+    feast_workout_data: Optional[dict] = None
 
 class FeastOverrideResponse(BaseModel):
     meal_id: str

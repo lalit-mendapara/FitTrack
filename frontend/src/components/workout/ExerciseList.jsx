@@ -4,7 +4,7 @@ import ExerciseCard from './ExerciseCard';
 import CardioCard from './CardioCard';
 import { getDailyWorkoutLogs } from '../../api/tracking';
 
-const ExerciseList = ({ dayPlan, onBack, onGenerate, onGenerateCustom, isGenerating, targetDate = null }) => {
+const ExerciseList = ({ dayPlan, onBack, onGenerate, onGenerateCustom, isGenerating, targetDate = null, feastStatus }) => {
   const [showCustomPromptModal, setShowCustomPromptModal] = useState(false);
   const [customPrompt, setCustomPrompt] = useState("");
   // const regenerateMenuRef = useRef(null); // Removed
@@ -26,7 +26,22 @@ const ExerciseList = ({ dayPlan, onBack, onGenerate, onGenerateCustom, isGenerat
     fetchLogs();
   }, [targetDate]);
 
+  useEffect(() => {
+    fetchLogs();
+  }, [targetDate]);
 
+  // Compute Effective Day Plan (Inject Feast Workout Data if applicable)
+  const isFeastDate = feastStatus?.event_date === targetDate;
+  const effectiveDayPlan = isFeastDate && feastStatus?.feast_workout_data
+    ? {
+        ...dayPlan,
+        workout_name: feastStatus.feast_workout_data.workout_name || "Feast Mode Workout",
+        primary_muscle_group: feastStatus.feast_workout_data.primary_muscle_group || "Full Body",
+        focus: feastStatus.feast_workout_data.focus || "Glycogen Depletion",
+        exercises: feastStatus.feast_workout_data.exercises || [],
+        cardio_exercises: feastStatus.feast_workout_data.cardio_exercises || []
+      }
+    : dayPlan;
 
   const handleCustomGenerate = () => {
      onGenerateCustom(customPrompt);
@@ -46,20 +61,20 @@ const ExerciseList = ({ dayPlan, onBack, onGenerate, onGenerateCustom, isGenerat
                 <ChevronLeft size={20} className="group-hover:-translate-x-0.5 transition-transform" />
             </button>
             <div>
-                <h2 className="text-3xl font-black text-gray-900 leading-none">{dayPlan.day_name}</h2>
-                {dayPlan.workout_name && (
-                    <h3 className={`text-xl font-bold mt-2 ${dayPlan.workout_split?.toLowerCase().includes('feast') || dayPlan.workout_name?.toLowerCase().includes('feast') ? 'text-purple-600' : 'text-indigo-600'}`}>
-                        {dayPlan.workout_name}
+                <h2 className="text-3xl font-black text-gray-900 leading-none">{effectiveDayPlan.day_name}</h2>
+                {effectiveDayPlan.workout_name && (
+                    <h3 className={`text-xl font-bold mt-2 ${effectiveDayPlan.workout_split?.toLowerCase().includes('feast') || effectiveDayPlan.workout_name?.toLowerCase().includes('feast') ? 'text-purple-600' : 'text-indigo-600'}`}>
+                        {effectiveDayPlan.workout_name}
                     </h3>
                 )}
                 <div className="flex items-center gap-2 mt-2">
-                    {dayPlan.primary_muscle_group && (
+                    {effectiveDayPlan.primary_muscle_group && (
                         <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-md border border-indigo-100 uppercase tracking-wide">
-                            {dayPlan.primary_muscle_group}
+                            {effectiveDayPlan.primary_muscle_group}
                         </span>
                     )}
                     <span className="text-xs font-bold text-gray-500 bg-gray-100 px-2.5 py-1 rounded-md border border-gray-200 uppercase tracking-wide">
-                            {dayPlan.focus}
+                            {effectiveDayPlan.focus}
                     </span>
                 </div>
             </div>
@@ -80,9 +95,9 @@ const ExerciseList = ({ dayPlan, onBack, onGenerate, onGenerateCustom, isGenerat
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {/* Strength Exercises */}
-                {dayPlan.exercises && (() => {
+                {effectiveDayPlan.exercises && (() => {
                     const muscleCounts = {};
-                    return dayPlan.exercises.map((exercise, idx) => {
+                    return effectiveDayPlan.exercises.map((exercise, idx) => {
                         const foundLog = loggedExercises.find(l => l.name === exercise.exercise);
                         
                         // Calculate Sequence
@@ -105,14 +120,14 @@ const ExerciseList = ({ dayPlan, onBack, onGenerate, onGenerateCustom, isGenerat
                 })()}
 
                 {/* Cardio Exercises - Merged into Grid */}
-                {dayPlan.cardio_exercises && dayPlan.cardio_exercises.map((exercise, idx) => {
+                {effectiveDayPlan.cardio_exercises && effectiveDayPlan.cardio_exercises.map((exercise, idx) => {
                     const foundLog = loggedExercises.find(l => l.name === exercise.exercise);
                     return <CardioCard key={`cardio-${idx}`} exercise={exercise} initialLogId={foundLog?.id} targetDate={targetDate} onLogUpdate={fetchLogs} />;
                 })}
             </div>
 
             {/* Fallback for old string format (if no structured cardio) */}
-            {(!dayPlan.cardio_exercises || dayPlan.cardio_exercises.length === 0) && dayPlan.cardio && (
+            {(!effectiveDayPlan.cardio_exercises || effectiveDayPlan.cardio_exercises.length === 0) && effectiveDayPlan.cardio && (
                  <div className="mt-8 bg-white border border-orange-100 rounded-3xl p-6 md:p-8 shadow-sm">
                     <div className="flex items-center gap-3 mb-4">
                         <div className="p-2 rounded-lg bg-orange-100 text-orange-600">
@@ -123,9 +138,9 @@ const ExerciseList = ({ dayPlan, onBack, onGenerate, onGenerateCustom, isGenerat
                         </div>
                     </div>
                     <p className="text-gray-700 font-medium text-lg leading-relaxed">
-                        {typeof dayPlan.cardio === 'object' 
-                            ? `${dayPlan.cardio.type || 'Cardio'} - ${dayPlan.cardio.duration_min || ''} mins` 
-                            : dayPlan.cardio}
+                        {typeof effectiveDayPlan.cardio === 'object' 
+                            ? `${effectiveDayPlan.cardio.type || 'Cardio'} - ${effectiveDayPlan.cardio.duration_min || ''} mins` 
+                            : effectiveDayPlan.cardio}
                     </p>
                  </div>
             )}

@@ -149,7 +149,8 @@ def get_feast_status(
         effective_calories=effective["calories"],
         workout_boost_enabled=config.workout_boost_enabled,
         selected_meals=config.selected_meals,
-        original_diet_snapshot=config.original_diet_snapshot
+        original_diet_snapshot=config.original_diet_snapshot,
+        feast_workout_data=config.feast_workout_data
     )
 
 @router.post("/propose")
