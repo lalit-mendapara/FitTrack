@@ -12,6 +12,7 @@ import { updateTimezone } from '../../api/user_profile';
 import { getActiveSocialEvent } from '../../api/socialEventService';
 import LockOverlay from '../common/LockOverlay';
 import FeastModeBanner from './FeastModeBanner';
+import WeeklyFeastNotification from './WeeklyFeastNotification';
 import NoticeBox from './NoticeBox';
 import { useDietPlan } from '../../hooks/useDietPlan';
 import feastModeService from '../../api/feastModeService';
@@ -72,9 +73,13 @@ const DashboardOverview = ({ hasDietPlan, hasWorkoutPlan }) => {
     }, []);
 
     const isFeastDay = feastStatus?.status === 'FEAST_DAY';
-    const baseCaloriesTarget = isFeastDay && feastStatus
+    const isBanking = feastStatus?.status === 'BANKING';
+
+    const baseCaloriesTarget = isFeastDay
         ? Math.round(feastStatus.effective_calories)
-        : (plan?.daily_generated_totals?.calories || dietData.caloriesTarget);
+        : isBanking
+            ? Math.round((feastStatus.base_calories || plan?.daily_generated_totals?.calories || 0) - (feastStatus.daily_deduction || 0))
+            : (plan?.daily_generated_totals?.calories || dietData.caloriesTarget);
 
     const progressPercent = baseCaloriesTarget > 0 
         ? Math.min((dietData.totalCalories / baseCaloriesTarget) * 100, 100)
@@ -82,6 +87,9 @@ const DashboardOverview = ({ hasDietPlan, hasWorkoutPlan }) => {
 
     return (
         <div className="space-y-6">
+            {/* Weekly Feast Notification (Mondays only) */}
+            <WeeklyFeastNotification onFeastActivated={fetchFeastStatus} />
+
             {/* Feast Mode Banner */}
             <div className="overflow-x-auto scrollbar-hide md:overflow-visible">
                 {feastStatus && <FeastModeBanner event={feastStatus} onUpdate={fetchFeastStatus} />}

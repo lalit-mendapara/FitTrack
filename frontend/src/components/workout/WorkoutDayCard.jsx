@@ -1,7 +1,7 @@
 import React from 'react';
 import { Calendar, MonitorPlay, Timer, Dumbbell, ChevronRight, Zap } from 'lucide-react';
 
-const WorkoutDayCard = ({ dayPlan, onSeeExercises, date, feastStatus }) => {
+const WorkoutDayCard = ({ dayPlan, onSeeExercises, date, feastStatus, isLoggedDate }) => {
   // Feast Mode Detection
   const isFeastDate = feastStatus?.event_date === date;
   const isFeastMode = dayPlan.workout_split?.toLowerCase().includes('feast') || dayPlan.workout_name?.toLowerCase().includes('feast') || isFeastDate;
@@ -25,12 +25,25 @@ const WorkoutDayCard = ({ dayPlan, onSeeExercises, date, feastStatus }) => {
   const totalDailyBurn = Math.round(strengthBurn + cardioBurn);
   
   // Format Date
-  const dateObj = date ? new Date(date) : null;
+  const dateObj = date ? new Date(date + 'T00:00:00') : null;
+  const todayObj = new Date();
+  todayObj.setHours(0,0,0,0);
+  
   const dateDisplay = dateObj ? dateObj.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }) : '';
-  const isToday = dateObj && new Date().toDateString() === dateObj.toDateString();
+  const isToday = dateObj && todayObj.getTime() === dateObj.getTime();
+  const isPast = dateObj && dateObj < todayObj;
 
-
-  return (
+  let buttonText = "Start";
+  if (isPast) {
+      buttonText = "View";
+  } else if (isToday) {
+      buttonText = isLoggedDate ? "View" : "Start";
+  } else if (isLoggedDate) {
+      // In case they logged a future date or we want to rely entirely on this prop
+      buttonText = "View";
+  } else {
+      buttonText = "Start";
+  }  return (
     <div className={`bg-white rounded-4xl shadow-xl border overflow-hidden hover:shadow-2xl transition-all duration-300 group relative 
         ${isFeastMode ? 'border-purple-200 ring-2 ring-purple-100 shadow-purple-100' : isToday ? 'border-indigo-200 ring-2 ring-indigo-100' : 'border-gray-100/50'}`}>
       <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:opacity-10 transition-opacity">
@@ -106,7 +119,7 @@ const WorkoutDayCard = ({ dayPlan, onSeeExercises, date, feastStatus }) => {
                 className={`flex items-center gap-1.5 px-5 py-2.5 text-white font-bold text-sm rounded-xl transition-all transform hover:-translate-y-0.5 hover:shadow-lg
                     ${isFeastMode ? 'bg-purple-900 hover:bg-purple-600 hover:shadow-purple-200' : 'bg-gray-900 hover:bg-indigo-600 hover:shadow-indigo-200'}`}
             >
-                Start <ChevronRight size={16} />
+                {buttonText} <ChevronRight size={16} />
             </button>
         </div>
       </div>

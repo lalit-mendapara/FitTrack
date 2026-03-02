@@ -947,7 +947,7 @@ const AICoach = () => {
                             onClick={() => handleSend(null, "What should I eat today?")}
                             className="whitespace-nowrap px-3 py-1.5 bg-indigo-50 text-indigo-700 text-xs font-semibold rounded-full hover:bg-indigo-100 transition-colors border border-indigo-100"
                          >
-                            📅 Today's Plan
+                            📅 what should i eat today?
                          </button>
                     </div>
 

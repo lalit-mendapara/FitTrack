@@ -3,6 +3,7 @@ import Navbar from '../components/layout/Navbar';
 import WorkoutDayCard from '../components/workout/WorkoutDayCard';
 import ExerciseList from '../components/workout/ExerciseList';
 import { Dumbbell, RefreshCw, MessageSquare, X, ChevronRight, ChevronLeft, AlertCircle, TrendingUp, HeartPulse, CheckCircle, Calendar } from 'lucide-react';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isBefore, isAfter } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
 import { useWorkoutPlan } from '../hooks/useWorkoutPlan'; // Hook Import
 import { Link, useSearchParams } from 'react-router-dom';
@@ -37,6 +38,8 @@ const WorkoutPlan = ({ isEmbedded = false, onPlanGenerated }) => {
 
   // Week Navigation State
   const [currentWeek, setCurrentWeek] = useState(1);
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const calendarRef = useRef(null);
 
   React.useEffect(() => {
     feastModeService.getStatus().then(status => setFeastStatus(status));
@@ -71,6 +74,44 @@ const WorkoutPlan = ({ isEmbedded = false, onPlanGenerated }) => {
     handleGenerate: generatePlan 
   } = useWorkoutPlan(onGenerateStart, onGenerateEnd);
 
+  // Note: Place hooks that depend on `plan` below its initialization!
+  React.useEffect(() => {
+    if (plan?.weekly_schedule && (plan.created_at || plan.updated_at)) {
+      const anchorDateStr = plan.updated_at || plan.created_at;
+      const anchorDate = new Date(anchorDateStr);
+      
+      const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const scheduleEntries = Object.entries(plan.weekly_schedule)
+        .sort(([a], [b]) => parseInt(a.replace('day', '')) - parseInt(b.replace('day', '')));
+        
+      if (scheduleEntries.length > 0) {
+        const day1Name = scheduleEntries[0][1]?.day_name;
+        if (day1Name) {
+          const day1WeekdayIdx = days.findIndex(d => d.toLowerCase() === day1Name.toLowerCase());
+          const anchorWeekdayIdx = anchorDate.getDay();
+          let diff = day1WeekdayIdx - anchorWeekdayIdx;
+          if (diff > 0) diff -= 7;
+          
+          const day1Date = new Date(anchorDate);
+          day1Date.setDate(anchorDate.getDate() + diff);
+          day1Date.setHours(0,0,0,0);
+          
+          const today = new Date();
+          today.setHours(0,0,0,0);
+          
+          const msPassed = today - day1Date;
+          const daysPassed = Math.floor(msPassed / (1000 * 60 * 60 * 24));
+          
+          if (daysPassed >= 0) {
+            const weekNumber = Math.floor(daysPassed / 7) + 1;
+            const maxDuration = plan.duration_weeks || 8;
+            setCurrentWeek(Math.min(weekNumber, maxDuration));
+          }
+        }
+      }
+    }
+  }, [plan?.created_at, plan?.updated_at, plan?.weekly_schedule, plan?.duration_weeks]);
+
   const [searchParams, setSearchParams] = useSearchParams();
   const activeDayKey = searchParams.get('day');
 
@@ -86,27 +127,29 @@ const WorkoutPlan = ({ isEmbedded = false, onPlanGenerated }) => {
     if (!plan?.weekly_schedule) return new Date().toISOString().split('T')[0];
 
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const today = new Date();
+    
+    // Anchor Date is when the plan was generated
+    const anchorDateStr = plan?.updated_at || plan?.created_at;
+    const anchorDate = anchorDateStr ? new Date(anchorDateStr) : new Date();
 
     // Sort schedule entries by key: day1, day2, ..., day7
     const scheduleEntries = Object.entries(plan.weekly_schedule)
       .sort(([a], [b]) => parseInt(a.replace('day', '')) - parseInt(b.replace('day', '')));
 
-    if (scheduleEntries.length === 0) return today.toISOString().split('T')[0];
+    if (scheduleEntries.length === 0) return anchorDate.toISOString().split('T')[0];
 
     // Get day1's weekday name (the plan's starting weekday)
     const day1Name = scheduleEntries[0][1]?.day_name;
-    if (!day1Name) return today.toISOString().split('T')[0];
+    if (!day1Name) return anchorDate.toISOString().split('T')[0];
 
     const day1WeekdayIdx = days.findIndex(d => d.toLowerCase() === day1Name.toLowerCase());
-    const todayWeekdayIdx = today.getDay(); // 0=Sun
+    const anchorWeekdayIdx = anchorDate.getDay(); // 0=Sun
 
-    // Calculate day1's actual calendar date
-    // Find the most recent occurrence of day1's weekday (including today)
-    let diff = day1WeekdayIdx - todayWeekdayIdx;
-    if (diff > 0) diff -= 7; // Go backward to find the most recent occurrence
-    const day1Date = new Date(today);
-    day1Date.setDate(today.getDate() + diff);
+    let diff = day1WeekdayIdx - anchorWeekdayIdx;
+    if (diff > 0) diff -= 7; 
+    
+    const day1Date = new Date(anchorDate);
+    day1Date.setDate(anchorDate.getDate() + diff);
 
     // Find the target day's sequential index in the plan (0-based)
     let targetIdx = -1;
@@ -117,16 +160,130 @@ const WorkoutPlan = ({ isEmbedded = false, onPlanGenerated }) => {
       }
     }
 
-    if (targetIdx === -1) return today.toISOString().split('T')[0];
+    if (targetIdx === -1) return anchorDate.toISOString().split('T')[0];
 
     // Target date = day1Date + targetIdx days + week offset
     const targetDate = new Date(day1Date);
     targetDate.setDate(day1Date.getDate() + targetIdx + (currentWeek - 1) * 7);
 
-    return targetDate.toISOString().split('T')[0];
+    // Format local date correctly
+    const year = targetDate.getFullYear();
+    const month = String(targetDate.getMonth() + 1).padStart(2, '0');
+    const day = String(targetDate.getDate()).padStart(2, '0');
+    
+    return `${year}-${month}-${day}`;
   };
 
   const targetDate = selectedDay ? getDateForDay(selectedDay.day_name || activeDayKey) : null;
+  
+  // Custom Calendar Logic
+  const [calendarDisplayMonth, setCalendarDisplayMonth] = useState(new Date());
+
+  const renderCalendar = () => {
+    if (!plan?.weekly_schedule) return null;
+
+    const anchorDateStr = plan?.updated_at || plan?.created_at;
+    const anchorDate = anchorDateStr ? new Date(anchorDateStr) : new Date();
+    
+    const daysArr = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const scheduleEntries = Object.entries(plan.weekly_schedule)
+      .sort(([a], [b]) => parseInt(a.replace('day', '')) - parseInt(b.replace('day', '')));
+      
+    if (scheduleEntries.length === 0) return null;
+
+    const day1Name = scheduleEntries[0][1]?.day_name;
+    const day1WeekdayIdx = daysArr.findIndex(d => d.toLowerCase() === day1Name.toLowerCase());
+    const anchorWeekdayIdx = anchorDate.getDay();
+    let diff = day1WeekdayIdx - anchorWeekdayIdx;
+    if (diff > 0) diff -= 7;
+    
+    const planStartDate = new Date(anchorDate);
+    planStartDate.setDate(anchorDate.getDate() + diff);
+    planStartDate.setHours(0,0,0,0);
+    
+    const durationWeeks = plan.duration_weeks || 8;
+    const planEndDate = new Date(planStartDate);
+    planEndDate.setDate(planStartDate.getDate() + (durationWeeks * 7) - 1);
+    planEndDate.setHours(23,59,59,999);
+
+    const monthStart = startOfMonth(calendarDisplayMonth);
+    const monthEnd = endOfMonth(monthStart);
+    const startWeek = monthStart.getDay(); 
+    const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
+
+    const blanks = Array(startWeek).fill(null);
+    const allDays = [...blanks, ...daysInMonth];
+
+    const weekRows = [];
+    let cells = [];
+    
+    allDays.forEach((day, index) => {
+      cells.push(day);
+      if ((index + 1) % 7 === 0 || index === allDays.length - 1) {
+        weekRows.push(cells);
+        cells = [];
+      }
+    });
+
+    const handleDateSelect = (day) => {
+        const selectDate = new Date(day);
+        selectDate.setHours(0,0,0,0);
+        const msDiff = selectDate - planStartDate;
+        const daysDiff = Math.floor(msDiff / (1000 * 60 * 60 * 24));
+        const selectedWeek = Math.floor(daysDiff / 7) + 1;
+        
+        if (selectedWeek >= 1 && selectedWeek <= durationWeeks) {
+            setCurrentWeek(selectedWeek);
+            setIsCalendarOpen(false);
+        }
+    };
+
+    return (
+      <div className="absolute top-full mb-12 sm:mb-0 left-1/2 -translate-x-1/2 mt-2 bg-white rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.1)] border border-gray-100 p-4 z-50 w-72 animate-in fade-in zoom-in-95 duration-200">
+         <div className="flex justify-between items-center mb-4">
+             <button onClick={(e) => { e.stopPropagation(); setCalendarDisplayMonth(subMonths(calendarDisplayMonth, 1)); }} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
+                 <ChevronLeft size={16} className="text-gray-500" />
+             </button>
+             <span className="font-bold text-gray-800 text-sm">{format(calendarDisplayMonth, 'MMMM yyyy')}</span>
+             <button onClick={(e) => { e.stopPropagation(); setCalendarDisplayMonth(addMonths(calendarDisplayMonth, 1)); }} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
+                 <ChevronRight size={16} className="text-gray-500" />
+             </button>
+         </div>
+         <div className="grid grid-cols-7 gap-1 text-center mb-2">
+             {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(d => (
+                 <div key={d} className="text-[10px] font-black uppercase text-gray-400">{d}</div>
+             ))}
+         </div>
+         <div className="grid grid-cols-7 gap-1">
+             {weekRows.map((row, i) => (
+                 <React.Fragment key={i}>
+                     {row.map((day, j) => {
+                         if (!day) return <div key={`empty-${j}`} className="h-8"></div>;
+                         
+                         const isOutOfRange = isBefore(day, planStartDate) || isAfter(day, planEndDate);
+                         const isToday = isSameDay(day, new Date());
+                         
+                         return (
+                             <button
+                                 key={`day-${j}`}
+                                 disabled={isOutOfRange}
+                                 onClick={(e) => { e.stopPropagation(); handleDateSelect(day); }}
+                                 className={`h-8 w-8 mx-auto flex items-center justify-center rounded-full text-xs transition-colors
+                                     ${isOutOfRange ? 'text-gray-300 cursor-not-allowed opacity-50' : 'text-gray-700 hover:bg-indigo-100 hover:text-indigo-700 font-medium'}
+                                     ${isToday && !isOutOfRange ? 'bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold' : ''}
+                                 `}
+                             >
+                                 {format(day, 'd')}
+                             </button>
+                         );
+                     })}
+                 </React.Fragment>
+             ))}
+         </div>
+         <div className="text-[10px] text-center mt-3 text-gray-400 font-medium">Select a valid plan date to jump week</div>
+      </div>
+    );
+  };
   
   // Custom Prompt State
   const [showCustomPromptModal, setShowCustomPromptModal] = useState(false);
@@ -140,6 +297,9 @@ const WorkoutPlan = ({ isEmbedded = false, onPlanGenerated }) => {
       if (regenerateMenuRef.current && !regenerateMenuRef.current.contains(event.target)) {
         setShowRegenerateOptions(false);
       }
+      if (calendarRef.current && !calendarRef.current.contains(event.target)) {
+        setIsCalendarOpen(false);
+      }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
@@ -148,6 +308,23 @@ const WorkoutPlan = ({ isEmbedded = false, onPlanGenerated }) => {
     };
 
   }, []);
+
+  // Determine if a specific date has been logged
+  const hasLoggedDate = (dateStr) => {
+    if (!dateStr) return false;
+    
+    // Check historical logs first
+    const hasLog = loggedWorkouts.some(log => {
+      const logDate = log.date || (log.created_at ? log.created_at.split('T')[0] : null);
+      return logDate === dateStr;
+    });
+    
+    // Check if it's today AND there's an active session
+    const isToday = dateStr === new Date().toISOString().split('T')[0];
+    const isSessionToday = isToday && hasSession;
+    
+    return hasLog || isSessionToday;
+  };
 
   // --- Reset Confirmation Logic ---
   const [showResetConfirmation, setShowResetConfirmation] = useState(false);
@@ -518,20 +695,26 @@ const WorkoutPlan = ({ isEmbedded = false, onPlanGenerated }) => {
                            >
                                <ChevronLeft size={18} />
                            </button>
-                           <div className="px-3 py-1 bg-gray-100 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600 flex items-center gap-1.5 min-w-[140px] justify-center">
-                               <Calendar size={12} className="text-gray-500" />
-                               <span>
-                                   {(() => {
-                                       const entries = Object.entries(plan.weekly_schedule)
-                                         .sort(([a], [b]) => parseInt(a.replace('day', '')) - parseInt(b.replace('day', '')));
-                                       const firstName = entries[0]?.[1]?.day_name;
-                                       const lastName = entries[entries.length - 1]?.[1]?.day_name;
-                                       const start = new Date(getDateForDay(firstName));
-                                       const end = new Date(getDateForDay(lastName));
-                                       const options = { month: 'short', day: 'numeric' };
-                                       return `${start.toLocaleDateString('en-US', options)} - ${end.toLocaleDateString('en-US', options)}`;
-                                   })()}
-                               </span>
+                           <div className="relative" ref={calendarRef}>
+                               <button 
+                                   onClick={() => setIsCalendarOpen(!isCalendarOpen)}
+                                   className="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors text-xs font-semibold text-gray-600 flex items-center gap-1.5 min-w-[140px] justify-center cursor-pointer shadow-sm"
+                               >
+                                   <Calendar size={12} className="text-gray-500" />
+                                   <span>
+                                       {(() => {
+                                           const entries = Object.entries(plan.weekly_schedule)
+                                             .sort(([a], [b]) => parseInt(a.replace('day', '')) - parseInt(b.replace('day', '')));
+                                           const firstName = entries[0]?.[1]?.day_name;
+                                           const lastName = entries[entries.length - 1]?.[1]?.day_name;
+                                           const start = new Date(getDateForDay(firstName));
+                                           const end = new Date(getDateForDay(lastName));
+                                           const options = { month: 'short', day: 'numeric' };
+                                           return `${start.toLocaleDateString('en-US', options)} - ${end.toLocaleDateString('en-US', options)}`;
+                                       })()}
+                                   </span>
+                               </button>
+                               {isCalendarOpen && renderCalendar()}
                            </div>
                            <button 
                                onClick={() => setCurrentWeek(prev => Math.min(plan.duration_weeks || 8, prev + 1))}
@@ -582,13 +765,16 @@ const WorkoutPlan = ({ isEmbedded = false, onPlanGenerated }) => {
                     </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-12">
-                  {plan.weekly_schedule && Object.entries(plan.weekly_schedule).map(([key, day]) => (
+                  {plan.weekly_schedule && Object.entries(plan.weekly_schedule)
+                    .filter(([key, day]) => day.day_name?.toLowerCase() !== 'sunday')
+                    .map(([key, day]) => (
                     <WorkoutDayCard 
                         key={key} 
                         dayPlan={day} 
                         date={getDateForDay(day.day_name)}
                         onSeeExercises={() => handleSeeExercises(key)} 
                         feastStatus={feastStatus}
+                        isLoggedDate={hasLoggedDate(getDateForDay(day.day_name))}
                     />
                   ))}
                   {!plan.weekly_schedule && (

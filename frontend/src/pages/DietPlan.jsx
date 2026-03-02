@@ -344,7 +344,7 @@ const DietPlan = ({ isEmbedded = false, onPlanGenerated }) => {
                     <p className="text-sm font-semibold text-purple-600 mt-1 flex items-center gap-1.5 flex-wrap">
                       Banking {Math.round(feastStatus.daily_deduction)} kcal/day for <span className="font-black">{feastStatus.event_name}</span>
                       <span className="text-gray-400 mx-1">•</span>
-                      Today's target: {plan ? Math.round(plan.daily_generated_totals?.calories || 0) : '—'} kcal
+                      Today's target: {plan ? Math.round((feastStatus.base_calories || plan.daily_generated_totals?.calories || 0) - (feastStatus.daily_deduction || 0)) : '—'} kcal
                     </p>
                   ) : feastStatus && feastStatus.status === 'FEAST_DAY' ? (
                     <p className="text-sm font-semibold text-amber-600 mt-1 flex items-center gap-1.5 flex-wrap">
@@ -363,7 +363,11 @@ const DietPlan = ({ isEmbedded = false, onPlanGenerated }) => {
                {plan && (
                  <div className="flex flex-wrap justify-center gap-3 sm:gap-6">
                      <NutrientMeter 
-                        value={feastStatus?.status === 'FEAST_DAY' ? Math.round(feastStatus.effective_calories) : (plan.daily_generated_totals?.calories || 0)} 
+                        value={
+                           feastStatus?.status === 'FEAST_DAY' ? Math.round(feastStatus.effective_calories) 
+                           : feastStatus?.status === 'BANKING' ? Math.round((feastStatus.base_calories || plan?.daily_generated_totals?.calories || 0) - (feastStatus.daily_deduction || 0))
+                           : (plan.daily_generated_totals?.calories || 0)
+                        } 
                         label="Calories" 
                         unit="" 
                         color={feastStatus?.status === 'FEAST_DAY' ? '#f59e0b' : '#6366f1'}

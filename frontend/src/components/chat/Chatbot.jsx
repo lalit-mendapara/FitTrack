@@ -678,7 +678,7 @@ const Chatbot = () => {
                         onClick={() => { setInput("What should I eat today?"); handleSend({ preventDefault: () => {} }); }}
                         className="whitespace-nowrap px-3 py-1.5 bg-emerald-50 text-emerald-700 text-xs font-semibold rounded-full hover:bg-emerald-100 transition-colors border border-emerald-100"
                      >
-                        📅 Today's Plan
+                        📅 what should i eat today?
                      </button>
                      <button 
                          onClick={() => { setInput("I want to adjust my dinner"); handleSend({ preventDefault: () => {} }); }}
