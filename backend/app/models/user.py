@@ -21,6 +21,7 @@ class User(Base):
             self.age = today.year - dob_value.year - ((today.month, today.day) < (dob_value.month, dob_value.day))
         return dob_value
     
-    profile = relationship("UserProfile",back_populates="user")
-    feast_configs = relationship("FeastConfig", back_populates="user")
-    feast_meal_overrides = relationship("FeastMealOverride", back_populates="user")
+    # Relationships with cascade delete
+    profile = relationship("UserProfile", back_populates="user", cascade="all, delete-orphan")
+    feast_configs = relationship("FeastConfig", back_populates="user", cascade="all, delete-orphan")
+    feast_meal_overrides = relationship("FeastMealOverride", back_populates="user", cascade="all, delete-orphan")

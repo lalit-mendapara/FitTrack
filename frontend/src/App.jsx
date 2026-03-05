@@ -10,6 +10,11 @@ import Dashboard from './pages/Dashboard';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import RedirectIfAuthenticated from './components/auth/RedirectIfAuthenticated';
 import { AuthProvider } from './context/AuthContext';
+import AdminLogin from './pages/admin/AdminLogin';
+import AdminDashboard from './pages/admin/AdminDashboard';
+import UserList from './pages/admin/UserList';
+import UserDetail from './pages/admin/UserDetail';
+import AdminProtectedRoute from './components/admin/AdminProtectedRoute';
 import './index.css';
 
 function App() {
@@ -63,6 +68,33 @@ function App() {
             <ProtectedRoute>
               <DietPlan />
             </ProtectedRoute>
+          } 
+        />
+        
+        {/* Admin Routes */}
+        <Route path="/admin/login" element={<AdminLogin />} />
+        <Route 
+          path="/admin/dashboard" 
+          element={
+            <AdminProtectedRoute>
+              <AdminDashboard />
+            </AdminProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/admin/users" 
+          element={
+            <AdminProtectedRoute>
+              <UserList />
+            </AdminProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/admin/users/:userId" 
+          element={
+            <AdminProtectedRoute>
+              <UserDetail />
+            </AdminProtectedRoute>
           } 
         />
       </Routes>

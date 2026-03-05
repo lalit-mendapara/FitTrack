@@ -929,7 +929,7 @@ const AICoach = () => {
                          {feastStatus ? (
                              <button 
                                 onClick={startFeastDeactivation}
-                                className="whitespace-nowrap px-3 py-1.5 bg-red-50 text-red-700 text-xs font-semibold rounded-full hover:bg-red-100 transition-colors border border-red-100 inline-flex items-center gap-1.5"
+                                className="whitespace-nowrap px-3 py-1.5 bg-red-50 text-red-700 text-xs font-semibold rounded-full hover:bg-red-100 transition-colors border border-red-100 inline-flex items-center gap-1.5 shrink-0"
                              >
                                 <img src={feastLogo} alt="Feast Mode" className="h-4 w-4 object-contain" />
                                 Cancel Feast Mode
@@ -937,7 +937,7 @@ const AICoach = () => {
                          ) : (
                              <button 
                                 onClick={startFeastActivation}
-                                className="whitespace-nowrap px-3 py-1.5 bg-purple-50 text-purple-700 text-xs font-semibold rounded-full hover:bg-purple-100 transition-colors border border-purple-100 inline-flex items-center gap-1.5"
+                                className="whitespace-nowrap px-3 py-1.5 bg-purple-50 text-purple-700 text-xs font-semibold rounded-full hover:bg-purple-100 transition-colors border border-purple-100 inline-flex items-center gap-1.5 shrink-0"
                              >
                                 <img src={feastLogo} alt="Feast Mode" className="h-4 w-4 object-contain" />
                                 Feast Mode
@@ -945,9 +945,33 @@ const AICoach = () => {
                          )}
                          <button 
                             onClick={() => handleSend(null, "What should I eat today?")}
-                            className="whitespace-nowrap px-3 py-1.5 bg-indigo-50 text-indigo-700 text-xs font-semibold rounded-full hover:bg-indigo-100 transition-colors border border-indigo-100"
+                            className="whitespace-nowrap px-3 py-1.5 bg-indigo-50 text-indigo-700 text-xs font-semibold rounded-full hover:bg-indigo-100 transition-colors border border-indigo-100 shrink-0"
                          >
-                            📅 what should i eat today?
+                            📅 What should I eat?
+                         </button>
+                         <button 
+                            onClick={() => handleSend(null, "What is my workout for today?")}
+                            className="whitespace-nowrap px-3 py-1.5 bg-orange-50 text-orange-700 text-xs font-semibold rounded-full hover:bg-orange-100 transition-colors border border-orange-100 shrink-0"
+                         >
+                            💪 Today's Workout
+                         </button>
+                         <button 
+                            onClick={() => handleSend(null, "I'm feeling low energy today, suggest a lighter workout or rest")}
+                            className="whitespace-nowrap px-3 py-1.5 bg-blue-50 text-blue-700 text-xs font-semibold rounded-full hover:bg-blue-100 transition-colors border border-blue-100 shrink-0"
+                         >
+                            😓 I'm too tired today
+                         </button>
+                         <button 
+                            onClick={() => handleSend(null, "Give me a summary of my progress this week")}
+                            className="whitespace-nowrap px-3 py-1.5 bg-green-50 text-green-700 text-xs font-semibold rounded-full hover:bg-green-100 transition-colors border border-green-100 shrink-0"
+                         >
+                            📈 My Progress
+                         </button>
+                         <button 
+                            onClick={() => handleSend(null, "Am I on track to reach my goal based on my recent activity?")}
+                            className="whitespace-nowrap px-3 py-1.5 bg-teal-50 text-teal-700 text-xs font-semibold rounded-full hover:bg-teal-100 transition-colors border border-teal-100 shrink-0"
+                         >
+                            🎯 Am I on track?
                          </button>
                     </div>
 

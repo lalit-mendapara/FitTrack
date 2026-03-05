@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine,Base
 import app.models
 from app.api import users,user_profile,meal_plan,login,workout_plan,workout_preferences,chat,tracking
+from app.api.admin import auth as admin_auth, users as admin_users, analytics as admin_analytics
 import logging
 
 # Configure Logging
@@ -73,6 +74,9 @@ from app.api import social_events
 app.include_router(social_events.router)
 from app.api import feast_mode
 app.include_router(feast_mode.router)
+app.include_router(admin_auth.router)
+app.include_router(admin_users.router)
+app.include_router(admin_analytics.router)
 
 # Root endpoint
 @app.get("/")
