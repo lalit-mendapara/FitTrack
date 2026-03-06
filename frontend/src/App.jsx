@@ -14,6 +14,10 @@ import AdminLogin from './pages/admin/AdminLogin';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import UserList from './pages/admin/UserList';
 import UserDetail from './pages/admin/UserDetail';
+import FoodList from './pages/admin/FoodList';
+import FoodForm from './pages/admin/FoodForm';
+import ExerciseList from './pages/admin/ExerciseList';
+import ExerciseForm from './pages/admin/ExerciseForm';
 import AdminProtectedRoute from './components/admin/AdminProtectedRoute';
 import './index.css';
 
@@ -94,6 +98,54 @@ function App() {
           element={
             <AdminProtectedRoute>
               <UserDetail />
+            </AdminProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/admin/foods" 
+          element={
+            <AdminProtectedRoute>
+              <FoodList />
+            </AdminProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/admin/foods/new" 
+          element={
+            <AdminProtectedRoute>
+              <FoodForm />
+            </AdminProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/admin/foods/:fdc_id" 
+          element={
+            <AdminProtectedRoute>
+              <FoodForm />
+            </AdminProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/admin/exercises" 
+          element={
+            <AdminProtectedRoute>
+              <ExerciseList />
+            </AdminProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/admin/exercises/new" 
+          element={
+            <AdminProtectedRoute>
+              <ExerciseForm />
+            </AdminProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/admin/exercises/:id" 
+          element={
+            <AdminProtectedRoute>
+              <ExerciseForm />
             </AdminProtectedRoute>
           } 
         />

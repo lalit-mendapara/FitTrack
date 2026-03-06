@@ -97,22 +97,31 @@ backend/
 │       └── 2026_03_992161264b12_add_admin_table.py
 ├── app/
 │   ├── models/
-│   │   └── admin.py
+│   │   ├── admin.py
+│   │   ├── food_item.py
+│   │   └── exercise.py
 │   ├── schemas/
-│   │   └── admin.py
+│   │   ├── admin.py
+│   │   ├── food_item.py
+│   │   └── exercise.py
 │   ├── crud/
-│   │   └── admin.py
+│   │   ├── admin.py
+│   │   ├── food_item.py
+│   │   └── exercise.py
 │   ├── api/
 │   │   └── admin/
 │   │       ├── __init__.py
 │   │       ├── auth.py
 │   │       ├── users.py
-│   │       └── analytics.py
+│   │       ├── analytics.py
+│   │       ├── foods.py
+│   │       └── exercises.py
 │   ├── utils/
 │   │   └── admin_auth.py
 │   └── main.py (updated with admin routes)
-└── scripts/
-    └── seed_admin.py
+├── scripts/
+│   └── seed_admin.py
+└── sample_exercises.csv (CSV template)
 
 frontend/
 └── src/
@@ -121,7 +130,11 @@ frontend/
     │       ├── AdminLogin.jsx
     │       ├── AdminDashboard.jsx
     │       ├── UserList.jsx
-    │       └── UserDetail.jsx
+    │       ├── UserDetail.jsx
+    │       ├── FoodList.jsx
+    │       ├── FoodForm.jsx
+    │       ├── ExerciseList.jsx
+    │       └── ExerciseForm.jsx
     ├── components/
     │   └── admin/
     │       ├── AdminLayout.jsx
@@ -168,10 +181,25 @@ docker compose build backend
 ### Database Queries:
 ```bash
 # Check admin table
-docker compose exec postgres psql -U diet_user -d fitness_track -c "SELECT * FROM admins;"
+docker compose exec postgres psql -U lalit -d fitness_track -c "SELECT * FROM admins;"
 
 # Check user count
-docker compose exec postgres psql -U diet_user -d fitness_track -c "SELECT COUNT(*) FROM users;"
+docker compose exec postgres psql -U lalit -d fitness_track -c "SELECT COUNT(*) FROM users;"
+
+# Check food items count
+docker compose exec postgres psql -U lalit -d fitness_track -c "SELECT COUNT(*) FROM food_items;"
+
+# View sample food items
+docker compose exec postgres psql -U lalit -d fitness_track -c "SELECT fdc_id, name, diet_type, meal_type, calories_kcal FROM food_items LIMIT 5;"
+
+# Check exercises count
+docker compose exec postgres psql -U lalit -d fitness_track -c "SELECT COUNT(*) FROM exercises;"
+
+# View sample exercises
+docker compose exec postgres psql -U lalit -d fitness_track -c "SELECT \"ID\", \"Exercise Name\", \"Category\", \"Primary Muscle\", \"Difficulty\" FROM exercises LIMIT 5;"
+
+# Check exercises with images
+docker compose exec postgres psql -U lalit -d fitness_track -c "SELECT COUNT(*) FROM exercises WHERE \"Image URL\" IS NOT NULL;"
 ```
 
 ---
@@ -255,26 +283,140 @@ docker compose exec postgres psql -U diet_user -d fitness_track -c "SELECT COUNT
 - `DELETE /api/admin/users/{id}` - Delete user
 - `POST /api/admin/users/{id}/reset-password` - Reset password
 
+### Food Management:
+- `GET /api/admin/foods` - List food items (with pagination & filters)
+- `GET /api/admin/foods/regions` - Get unique regions
+- `GET /api/admin/foods/{fdc_id}` - Get food item detail
+- `POST /api/admin/foods` - Create food item
+- `PUT /api/admin/foods/{fdc_id}` - Update food item
+- `DELETE /api/admin/foods/{fdc_id}` - Delete food item
+- `POST /api/admin/foods/import/csv` - Bulk import from CSV
+- `GET /api/admin/foods/export/csv` - Export to CSV
+
+### Exercise Management:
+- `GET /api/admin/exercises` - List exercises (with pagination & filters)
+- `GET /api/admin/exercises/categories` - Get unique categories
+- `GET /api/admin/exercises/muscles` - Get unique primary muscles
+- `GET /api/admin/exercises/difficulties` - Get unique difficulty levels
+- `GET /api/admin/exercises/{id}` - Get exercise detail
+- `POST /api/admin/exercises` - Create exercise
+- `PUT /api/admin/exercises/{id}` - Update exercise
+- `DELETE /api/admin/exercises/{id}` - Delete exercise
+- `POST /api/admin/exercises/import/csv` - Bulk import from CSV
+- `GET /api/admin/exercises/export/csv` - Export to CSV
+
 ### Analytics:
 - `GET /api/admin/analytics/dashboard` - Get dashboard stats
+
+---
+
+---
+
+### **Phase 4: Food Item Database** 🥗 ✅
+**Status:** Fully Implemented & Tested
+
+#### Backend APIs:
+- ✅ `GET /api/admin/foods` - List food items with pagination & filters
+  - Supports: `page`, `page_size`, `search`, `diet_type`, `meal_type`, `region` query parameters
+  - Returns: items array, total count, pagination info
+- ✅ `GET /api/admin/foods/regions` - Get unique regions list
+- ✅ `GET /api/admin/foods/{fdc_id}` - Get food item detail
+- ✅ `POST /api/admin/foods` - Create new food item
+- ✅ `PUT /api/admin/foods/{fdc_id}` - Update food item
+- ✅ `DELETE /api/admin/foods/{fdc_id}` - Delete food item
+- ✅ `POST /api/admin/foods/import/csv` - Bulk import from CSV
+- ✅ `GET /api/admin/foods/export/csv` - Export to CSV with filters
+
+#### Frontend Pages:
+- ✅ Food list page: `/admin/foods`
+  - Search by name or FDC ID
+  - Pagination (20 items per page)
+  - Filters: diet type, meal type, region
+  - Table view with macros display
+  - CSV import/export functionality
+  - "Add Food Item" button
+- ✅ Food form page: `/admin/foods/new` and `/admin/foods/{fdc_id}`
+  - Create new food items
+  - Edit existing food items
+  - Form validation
+  - Delete functionality with confirmation modal
+  - All nutritional fields (protein, fat, carbs, calories, serving size)
+
+#### Features:
+- ✅ Real-time search filtering
+- ✅ Multi-filter support (diet type, meal type, region)
+- ✅ Pagination controls
+- ✅ CSV bulk import with error reporting
+- ✅ CSV export with applied filters
+- ✅ Form validation for all required fields
+- ✅ Delete with confirmation modal
+- ✅ Responsive design with TailwindCSS
+- ✅ Diet type badges (veg/non-veg)
+
+#### Database:
+- ✅ Food items table exists with 1,132 items
+- ✅ Schema: fdc_id (PK), name, diet_type, meal_type, serving_size_g, protein_g, fat_g, carb_g, calories_kcal, region, vector_text
+
+---
+
+---
+
+### **Phase 5: Exercise Database** 💪 ✅
+**Status:** Fully Implemented & Tested
+
+#### Backend APIs:
+- ✅ `GET /api/admin/exercises` - List exercises with pagination & filters
+  - Supports: `page`, `page_size`, `search`, `category`, `primary_muscle`, `difficulty` query parameters
+  - Returns: items array, total count, pagination info
+- ✅ `GET /api/admin/exercises/categories` - Get unique categories list
+- ✅ `GET /api/admin/exercises/muscles` - Get unique primary muscles list
+- ✅ `GET /api/admin/exercises/difficulties` - Get unique difficulty levels list
+- ✅ `GET /api/admin/exercises/{id}` - Get exercise detail
+- ✅ `POST /api/admin/exercises` - Create new exercise
+- ✅ `PUT /api/admin/exercises/{id}` - Update exercise
+- ✅ `DELETE /api/admin/exercises/{id}` - Delete exercise
+- ✅ `POST /api/admin/exercises/import/csv` - Bulk import from CSV
+- ✅ `GET /api/admin/exercises/export/csv` - Export to CSV with filters
+
+#### Frontend Pages:
+- ✅ Exercise list page: `/admin/exercises`
+  - Search by name, category, or muscle
+  - Pagination (20 items per page)
+  - Filters: category, primary muscle, difficulty
+  - Table view with difficulty badges
+  - CSV import/export functionality
+  - "Add Exercise" button
+  - Image URL indicator
+- ✅ Exercise form page: `/admin/exercises/new` and `/admin/exercises/{id}`
+  - Create new exercises
+  - Edit existing exercises
+  - Form validation
+  - Delete functionality with confirmation modal
+  - **Image URL input with preview**
+  - All required fields (name, category, primary muscle, difficulty)
+
+#### Features:
+- ✅ Real-time search filtering
+- ✅ Multi-filter support (category, muscle, difficulty)
+- ✅ Pagination controls
+- ✅ CSV bulk import with error reporting
+- ✅ CSV export with applied filters
+- ✅ Form validation for all required fields
+- ✅ **Image URL support with validation and preview**
+- ✅ Delete with confirmation modal
+- ✅ Responsive design with TailwindCSS
+- ✅ Difficulty badges (Beginner/Intermediate/Advanced)
+
+#### Database:
+- ✅ Exercises table exists with 90 items
+- ✅ Schema: ID (PK), Exercise Name, Category, Primary Muscle, Difficulty, Image URL
+- ✅ Image URL field supports external image links
 
 ---
 
 ## 🎯 Next Modules (Pending)
 
 Based on `fittrack_core_features_final.md` priority order:
-
-### 1. **Food Item Database** 🥗 (Priority 2)
-- [ ] Backend: CRUD APIs for food items
-- [ ] Backend: Bulk CSV import/export
-- [ ] Frontend: Food list with filters (diet type, meal type, region)
-- [ ] Frontend: Add/Edit food forms
-
-### 2. **Exercise Database** 💪 (Priority 3)
-- [ ] Backend: CRUD APIs for exercises
-- [ ] Backend: Bulk CSV import/export
-- [ ] Frontend: Exercise list with filters (muscle group, category, difficulty)
-- [ ] Frontend: Add/Edit exercise forms
 
 ### 3. **Feast Mode Oversight** 🎉 (Priority 4)
 - [ ] Backend: GET /api/admin/feasts (list all feasts)
@@ -376,6 +518,6 @@ docker compose restart backend frontend
 
 ---
 
-**Last Updated:** March 5, 2026
-**Status:** User Management Module Complete ✅
-**Next:** Food Item Database Module
+**Last Updated:** March 6, 2026
+**Status:** Exercise Database Module Complete ✅
+**Next:** Feast Mode Oversight Module

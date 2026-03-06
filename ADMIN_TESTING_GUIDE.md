@@ -323,7 +323,7 @@ docker compose exec postgres psql -U diet_user -d fitness_track -c "\d admins"
 ### Test 2.4: Verify Default Admin Created
 ```bash
 # Check admin record
-docker compose exec postgres psql -U diet_user -d fitness_track -c "SELECT id, email, full_name, is_super_admin, is_active FROM admins;"
+docker compose exec postgres psql -U lalit -d fitness_track -c "SELECT id, email, full_name, is_super_admin, is_active FROM admins;"
 
 # Expected output:
 # id | email              | full_name              | is_super_admin | is_active

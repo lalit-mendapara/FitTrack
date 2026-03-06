@@ -244,8 +244,8 @@ def map_ingredients_to_food_items(
         if not food_item:
             print(f"    🔎 Searching USDA API for: '{ingredient}'...")
             try:
-                # Use ingredient as query
-                api_item = food_api_service.get_food_item(ingredient, diet_type or "veg", "ingredient")
+                # Use ingredient as query (meal_type will be auto-categorized)
+                api_item = food_api_service.get_food_item(ingredient, diet_type or "veg", meal_type=None)
                 
                 if api_item:
                     food_item = api_item
@@ -257,7 +257,8 @@ def map_ingredients_to_food_items(
                         db.add(food_item)
                         db.commit()
                         db.refresh(food_item)
-                        print(f"      💾 Saved to DB: {food_item.name} (Source: {food_item.region})")
+                        print(f"      💾 Saved to DB: {food_item.name}")
+                        print(f"         └─ Auto-categorized: Meal={food_item.meal_type} | Region={food_item.region}")
                     except Exception as db_err:
                         db.rollback()
                         logger.error(f"Failed to save USDA item to DB: {db_err}")

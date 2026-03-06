@@ -1,0 +1,115 @@
+"""
+Cleanup Script: Remove Old USDA-API Records (Docker Version)
+-------------------------------------------------------------
+This script deletes all food items with region='USDA-API' from the database.
+Designed to run inside Docker container.
+
+USAGE (from project root):
+    docker compose exec backend python scripts/cleanup_usda_docker.py
+"""
+
+import sys
+from sqlalchemy import text
+from app.database import SessionLocal
+
+
+def cleanup_usda_api_records():
+    """Delete all food items with region='USDA-API'"""
+    db = SessionLocal()
+    
+    try:
+        # First, count how many records will be deleted
+        count_query = text("SELECT COUNT(*) FROM food_items WHERE region = 'USDA-API'")
+        count_result = db.execute(count_query).scalar()
+        
+        print(f"\n{'='*60}")
+        print(f"  USDA-API Records Cleanup (Docker)")
+        print(f"{'='*60}")
+        print(f"\nFound {count_result} records with region='USDA-API'")
+        
+        if count_result == 0:
+            print("\n✓ No records to delete. Database is already clean!")
+            return
+        
+        # Show sample records before deletion
+        print("\nSample records to be deleted:")
+        sample_query = text("""
+            SELECT fdc_id, name, meal_type, region 
+            FROM food_items 
+            WHERE region = 'USDA-API' 
+            LIMIT 5
+        """)
+        samples = db.execute(sample_query).fetchall()
+        
+        for record in samples:
+            print(f"  - {record.fdc_id}: {record.name} (meal_type={record.meal_type})")
+        
+        if count_result > 5:
+            print(f"  ... and {count_result - 5} more records")
+        
+        # Ask for confirmation
+        print(f"\n⚠️  WARNING: This will permanently delete {count_result} records!")
+        confirmation = input("\nType 'DELETE' to confirm deletion: ")
+        
+        if confirmation != 'DELETE':
+            print("\n❌ Deletion cancelled. No changes made.")
+            return
+        
+        # Perform deletion
+        print("\n🗑️  Deleting records...")
+        delete_query = text("DELETE FROM food_items WHERE region = 'USDA-API'")
+        result = db.execute(delete_query)
+        db.commit()
+        
+        deleted_count = result.rowcount
+        print(f"\n✓ Successfully deleted {deleted_count} records!")
+        
+        # Verify deletion
+        verify_query = text("SELECT COUNT(*) FROM food_items WHERE region = 'USDA-API'")
+        remaining = db.execute(verify_query).scalar()
+        
+        if remaining == 0:
+            print("✓ Verification passed: No USDA-API records remaining")
+        else:
+            print(f"⚠️  Warning: {remaining} USDA-API records still exist")
+        
+        # Show current region distribution
+        print("\n" + "="*60)
+        print("Current Region Distribution:")
+        print("="*60)
+        region_query = text("""
+            SELECT region, COUNT(*) as count 
+            FROM food_items 
+            WHERE region IS NOT NULL 
+            GROUP BY region 
+            ORDER BY count DESC
+        """)
+        regions = db.execute(region_query).fetchall()
+        
+        for region in regions:
+            print(f"  {region.region:20} : {region.count:5} items")
+        
+        print(f"\n{'='*60}\n")
+        
+    except Exception as e:
+        db.rollback()
+        print(f"\n❌ Error during cleanup: {e}")
+        raise
+    finally:
+        db.close()
+
+
+if __name__ == "__main__":
+    print("\n" + "="*60)
+    print("  USDA-API Records Cleanup (Docker)")
+    print("="*60)
+    print("\nThis script will remove all food items with region='USDA-API'")
+    print("New USDA items will be auto-categorized into proper regions.\n")
+    
+    try:
+        cleanup_usda_api_records()
+    except KeyboardInterrupt:
+        print("\n\n❌ Operation cancelled by user.")
+    except Exception as e:
+        print(f"\n❌ Script failed: {e}")
+        sys.exit(1)
