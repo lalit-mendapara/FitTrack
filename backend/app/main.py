@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine,Base
 import app.models
 from app.api import users,user_profile,meal_plan,login,workout_plan,workout_preferences,chat,tracking
-from app.api.admin import auth as admin_auth, users as admin_users, analytics as admin_analytics, foods as admin_foods, exercises as admin_exercises
+from app.api.admin import auth as admin_auth, users as admin_users, analytics as admin_analytics, foods as admin_foods, exercises as admin_exercises, feasts as admin_feasts
 import logging
 
 # Configure Logging
@@ -79,6 +79,7 @@ app.include_router(admin_users.router)
 app.include_router(admin_analytics.router)
 app.include_router(admin_foods.router)
 app.include_router(admin_exercises.router)
+app.include_router(admin_feasts.router)
 
 # Root endpoint
 @app.get("/")

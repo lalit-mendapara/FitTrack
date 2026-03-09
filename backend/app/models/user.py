@@ -1,7 +1,7 @@
-from sqlalchemy import Column, Integer, String, Date
+from sqlalchemy import Column, Integer, String, Date, DateTime
 from app.database import Base
 from sqlalchemy.orm import relationship,validates
-from datetime import date
+from datetime import date, datetime
 
 class User(Base):
     __tablename__ = "users"
@@ -13,6 +13,8 @@ class User(Base):
     dob = Column(Date)
     gender = Column(String(10))
     age = Column(Integer)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     @validates('dob')
     def update_age(self, key, dob_value):

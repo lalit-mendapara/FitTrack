@@ -132,18 +132,27 @@ def get_feast_status(
     if not config:
         return None
         
-    days_remaining = (config.event_date - (current_date or date.today())).days
+    today = current_date or date.today()
+    days_remaining = (config.event_date - today).days
+    
+    # Dynamically calculate status based on current date
+    if today == config.event_date:
+        status = "FEAST_DAY"
+    elif today > config.event_date:
+        status = "COMPLETED"
+    else:
+        status = "BANKING"
     
     # Calculate effective calories for display
-    effective = manager.get_effective_targets(user_id, current_date or date.today())
+    effective = manager.get_effective_targets(user_id, today)
     
     return FeastStatusResponse(
         event_name=config.event_name,
         event_date=config.event_date,
-        status=config.status,
+        status=status,
         daily_deduction=config.daily_deduction,
         target_bank_calories=config.target_bank_calories,
-        days_remaining=days_remaining,
+        days_remaining=max(0, days_remaining),
         start_date=config.start_date,
         base_calories=config.base_calories,
         effective_calories=effective["calories"],

@@ -18,6 +18,9 @@ import FoodList from './pages/admin/FoodList';
 import FoodForm from './pages/admin/FoodForm';
 import ExerciseList from './pages/admin/ExerciseList';
 import ExerciseForm from './pages/admin/ExerciseForm';
+import FeastList from './pages/admin/FeastList';
+import FeastDetail from './pages/admin/FeastDetail';
+import Analytics from './pages/admin/Analytics';
 import AdminProtectedRoute from './components/admin/AdminProtectedRoute';
 import './index.css';
 
@@ -146,6 +149,30 @@ function App() {
           element={
             <AdminProtectedRoute>
               <ExerciseForm />
+            </AdminProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/admin/feasts" 
+          element={
+            <AdminProtectedRoute>
+              <FeastList />
+            </AdminProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/admin/feasts/:id" 
+          element={
+            <AdminProtectedRoute>
+              <FeastDetail />
+            </AdminProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/admin/analytics" 
+          element={
+            <AdminProtectedRoute>
+              <Analytics />
             </AdminProtectedRoute>
           } 
         />

@@ -109,22 +109,27 @@ const FeastModeBanner = ({ event, onUpdate }) => {
                         </div>
                         <div className="flex-1 min-w-0">
                             <h3 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2 flex-wrap">
-                                🎉 It's Feast Day: {event.event_name}!
+                                🎉 It's Your Feast Day!
                             </h3>
                             <p className="text-gray-600 text-sm mt-1 wrap-break-word">
-                                Your banked <strong>+{event.target_bank_calories} kcal</strong> are added into today's plan — enjoy your feast day without any hesitation!
+                                Today is <span className="font-bold text-orange-600">{event.event_name}</span> — you've earned this! Enjoy your celebration with an extra <strong className="text-orange-600">+{event.target_bank_calories} kcal</strong> banked just for today.
                             </p>
-                            <p className="text-gray-400 text-xs mt-1">
-                                Macros are as per your regular plan.
+                            <p className="text-gray-500 text-xs mt-1 font-medium">
+                                Indulge guilt-free — you've worked hard for this moment! 🍽️
                             </p>
                         </div>
                     </div>
                     
-                    <div className="flex items-center gap-3 relative z-10">
-                        <div className="bg-linear-to-r from-orange-500 to-red-500 text-white px-4 py-2 sm:px-6 rounded-xl shadow-md transform hover:scale-105 transition-transform font-bold text-center">
-                            Enjoy! 🍽️
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 relative z-10">
+                        <div className="flex items-center gap-3 bg-linear-to-br from-orange-50 to-amber-50 px-3 py-2 rounded-xl border border-orange-200 justify-center">
+                            <div className="text-center">
+                                <p className="text-xs text-orange-600 font-bold uppercase tracking-wider">Bonus Calories</p>
+                                <p className="text-lg sm:text-xl font-black text-orange-600">
+                                    +{event.target_bank_calories} <span className="text-sm font-normal text-orange-400">kcal</span>
+                                </p>
+                            </div>
                         </div>
-                         <button 
+                        <button 
                             onClick={handleCancelClick}
                             disabled={loading}
                             className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-500 hover:text-red-600 bg-white/50 hover:bg-white rounded-lg transition-colors shrink-0"
