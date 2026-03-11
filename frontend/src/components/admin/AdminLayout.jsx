@@ -1,26 +1,26 @@
 import React, { useState } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { adminAuth } from '../../utils/adminAuth';
+import { ChartBar, ChartLineUp, Users, ForkKnife, Barbell, Confetti, Gear, CaretLeft, CaretRight } from '@phosphor-icons/react';
 
 const AdminLayout = ({ children }) => {
-  const navigate = useNavigate();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const admin = adminAuth.getUser();
 
   const handleLogout = () => {
     adminAuth.logout();
-    navigate('/admin/login');
+    window.location.replace('/admin/login');
   };
 
   const navItems = [
-    { path: '/admin/dashboard', icon: '📊', label: 'Dashboard' },
-    { path: '/admin/analytics', icon: '📈', label: 'Analytics' },
-    { path: '/admin/users', icon: '👥', label: 'Users' },
-    { path: '/admin/foods', icon: '🥗', label: 'Foods' },
-    { path: '/admin/exercises', icon: '💪', label: 'Exercises' },
-    { path: '/admin/feasts', icon: '🎉', label: 'Feast Mode' },
-    { path: '/admin/settings', icon: '⚙️', label: 'Settings' },
+    { path: '/admin/dashboard', icon: <ChartBar size={22} weight="duotone" />, label: 'Dashboard' },
+    { path: '/admin/analytics', icon: <ChartLineUp size={22} weight="duotone" />, label: 'Analytics' },
+    { path: '/admin/users', icon: <Users size={22} weight="duotone" />, label: 'Users' },
+    { path: '/admin/foods', icon: <ForkKnife size={22} weight="duotone" />, label: 'Foods' },
+    { path: '/admin/exercises', icon: <Barbell size={22} weight="duotone" />, label: 'Exercises' },
+    { path: '/admin/feasts', icon: <Confetti size={22} weight="duotone" />, label: 'Feast Mode' },
+    { path: '/admin/settings', icon: <Gear size={22} weight="duotone" />, label: 'Settings' },
   ];
 
   return (
@@ -33,7 +33,7 @@ const AdminLayout = ({ children }) => {
             onClick={() => setSidebarOpen(!sidebarOpen)}
             className="p-2 hover:bg-slate-700 rounded"
           >
-            {sidebarOpen ? '◀' : '▶'}
+            {sidebarOpen ? <CaretLeft size={18} weight="bold" /> : <CaretRight size={18} weight="bold" />}
           </button>
         </div>
 
@@ -48,7 +48,7 @@ const AdminLayout = ({ children }) => {
                   : 'hover:bg-slate-700'
               }`}
             >
-              <span className="text-xl">{item.icon}</span>
+              <span className="shrink-0">{item.icon}</span>
               {sidebarOpen && <span>{item.label}</span>}
             </Link>
           ))}
@@ -56,7 +56,7 @@ const AdminLayout = ({ children }) => {
 
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-slate-700">
           <div className={`flex items-center gap-3 ${!sidebarOpen && 'justify-center'}`}>
-            <div className="w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
+            <div className="w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center shrink-0">
               {admin?.email?.[0]?.toUpperCase() || 'A'}
             </div>
             {sidebarOpen && (
@@ -75,8 +75,8 @@ const AdminLayout = ({ children }) => {
       </aside>
 
       {/* Main Content */}
-      <main className={`flex-1 overflow-auto transition-all duration-300 ${sidebarOpen ? 'ml-64' : 'ml-20'}`}>
-        <div className="p-8">
+      <main className={`flex-1 transition-all duration-300 ${sidebarOpen ? 'ml-64' : 'ml-20'}`}>
+        <div className="p-6">
           {children}
         </div>
       </main>

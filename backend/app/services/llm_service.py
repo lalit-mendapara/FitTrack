@@ -2,6 +2,8 @@
 import os
 import sys
 import json
+import base64
+import hashlib
 import requests
 from typing import Dict, List, Optional, Any
 
@@ -26,7 +28,7 @@ if sys.version_info < (3, 14):
     except ImportError as e:
         print(f"[Langfuse] Import error: {e}")
 
-# Configuration
+# Configuration (env-var fallbacks — DB values take priority at runtime)
 from config import LLM_PROVIDER, LLM_API_KEY, LLM_MODEL as OVERRIDE_MODEL
 
 # Default to local Ollama instance
@@ -50,6 +52,45 @@ PROVIDER_URLS = {
     "openai": None # Uses default OpenAI URL
 }
 
+
+# ---------------------------------------------------------------------------
+# Live DB config helpers — read system_settings on every call so changes
+# made in the Admin Settings panel take effect immediately (no restart needed).
+# ---------------------------------------------------------------------------
+def _decrypt_value(stored: str) -> str:
+    """Decrypt a Fernet-encrypted DB value. Falls back to raw string."""
+    if not stored:
+        return stored
+    try:
+        from cryptography.fernet import Fernet, InvalidToken
+        secret = os.getenv("SECRET_KEY", "changeme-set-a-real-secret-key")
+        key = base64.urlsafe_b64encode(hashlib.sha256(secret.encode()).digest())
+        return Fernet(key).decrypt(stored.encode()).decode()
+    except Exception:
+        return stored  # Not encrypted — return as-is
+
+
+def _get_db_llm_config() -> dict:
+    """Read live LLM config from system_settings table.
+    Returns a dict with keys: llm_provider, llm_model, ollama_url, ollama_model, llm_api_key.
+    Falls back to an empty dict if DB is unreachable."""
+    try:
+        from app.database import SessionLocal
+        from app.models.system_setting import SystemSetting
+        db = SessionLocal()
+        try:
+            keys = ['llm_provider', 'llm_model', 'ollama_url', 'ollama_model', 'llm_api_key']
+            rows = db.query(SystemSetting).filter(SystemSetting.key.in_(keys)).all()
+            return {
+                row.key: (_decrypt_value(row.value) if row.is_sensitive else (row.value or ''))
+                for row in rows
+            }
+        finally:
+            db.close()
+    except Exception as e:
+        print(f"[LLM Service] DB config read failed, using env vars: {e}")
+        return {}
+
 if LANGFUSE_ENABLED:
     print("[Langfuse] Tracing enabled via @observe decorator with usage tracking")
 elif sys.version_info >= (3, 14):
@@ -60,58 +101,62 @@ else:
 def get_llm(temperature: float = 0.7, max_tokens: int = 2000, json_mode: bool = False):
     """
     Factory function to get a configured LangChain Chat Model instance.
+    Reads config from system_settings DB table on every call (live — no restart needed).
+    Falls back to environment variables if DB is unavailable.
     Supports: Ollama (Local), OpenRouter, OpenAI
     """
-    
-    # 1. Ollama (Local)
-    if LLM_PROVIDER == "ollama":
-        # CRITICAL FIX: Ensure we don't accidentally connect to cloud if API key is present
-        # Local Ollama does NOT need an API key. 
-        # if "OLLAMA_API_KEY" in os.environ:
-        #      print(f"[LLM Service] Note: OLLAMA_API_KEY found but using local provider. Unsetting to prevent conflicts.")
-        #      del os.environ["OLLAMA_API_KEY"]
+    cfg = _get_db_llm_config()
 
+    provider = cfg.get('llm_provider') or LLM_PROVIDER
+    api_key  = cfg.get('llm_api_key')  or LLM_API_KEY
+    raw_url  = cfg.get('ollama_url')   or OLLAMA_URL or 'http://localhost:11434'
+    live_ollama_url = raw_url.rstrip('/')
+
+    # Model priority: DB llm_model override > DB ollama_model > env override > provider default
+    live_model = (
+        cfg.get('llm_model')
+        or OVERRIDE_MODEL
+        or cfg.get('ollama_model')
+        or DEFAULT_MODELS.get(provider, 'gpt-oss:120b-cloud')
+    )
+
+    # 1. Ollama (Local)
+    if provider == "ollama":
         format_val = "json" if json_mode else ""
-        
-        # Ensure URL is valid (strip trailing slash)
-        base_url = OLLAMA_URL.rstrip("/")
-        
         return ChatOllama(
-            base_url=base_url,
-            model=MODEL_NAME,
+            base_url=live_ollama_url,
+            model=live_model,
             temperature=temperature,
             num_predict=max_tokens,
             format=format_val,
             timeout=120.0
         )
-    
+
     # 2. OpenAI Compatible (OpenRouter, OpenAI)
-    elif LLM_PROVIDER in ["openrouter", "openai"]:
-        if not LLM_API_KEY:
-            print(f"[LLM Service] CRITICAL: Missing API Key for provider {LLM_PROVIDER}")
-            # Fallback to Ollama or Raise Error? 
-            # For now, let it fail so user knows config is wrong.
-        
+    elif provider in ["openrouter", "openai"]:
+        if not api_key:
+            print(f"[LLM Service] CRITICAL: Missing API Key for provider {provider}")
+
         model_kwargs = {}
         if json_mode:
             model_kwargs["response_format"] = {"type": "json_object"}
-            
+
         return ChatOpenAI(
-            model=MODEL_NAME,
-            api_key=LLM_API_KEY,
-            base_url=PROVIDER_URLS.get(LLM_PROVIDER),
+            model=live_model,
+            api_key=api_key,
+            base_url=PROVIDER_URLS.get(provider),
             temperature=temperature,
             max_tokens=max_tokens,
             model_kwargs=model_kwargs,
             timeout=60.0
         )
-    
+
     # 3. Fallback / Unknown
     else:
-        print(f"[LLM Service] Warning: Unknown provider '{LLM_PROVIDER}'. Defaulting to Ollama.")
+        print(f"[LLM Service] Warning: Unknown provider '{provider}'. Defaulting to Ollama.")
         return ChatOllama(
-            base_url=OLLAMA_URL,
-            model=MODEL_NAME,
+            base_url=live_ollama_url,
+            model=live_model,
             temperature=temperature,
             num_predict=max_tokens,
             timeout=120.0
@@ -201,7 +246,9 @@ def call_llm_json(
     """
     Executes a structured JSON request using LangChain and tracks it with Langfuse.
     """
-    print(f"[LLM Service] Calling Model (JSON): {MODEL_NAME}")
+    cfg = _get_db_llm_config()
+    live_model = cfg.get('llm_model') or OVERRIDE_MODEL or cfg.get('ollama_model') or MODEL_NAME
+    print(f"[LLM Service] Calling Model (JSON): {live_model}")
     
     try:
         llm = get_llm(temperature=temperature, max_tokens=max_tokens, json_mode=True)
@@ -274,7 +321,9 @@ def call_llm(
     """
     Executes a standard chat request using LangChain and tracks it with Langfuse.
     """
-    print(f"[LLM Service] Calling Model (Text): {MODEL_NAME}")
+    cfg = _get_db_llm_config()
+    live_model = cfg.get('llm_model') or OVERRIDE_MODEL or cfg.get('ollama_model') or MODEL_NAME
+    print(f"[LLM Service] Calling Model (Text): {live_model}")
     
     try:
         llm = get_llm(temperature=temperature, max_tokens=max_tokens)
@@ -342,6 +391,10 @@ def _generate_title_direct_ollama(first_message: str) -> str:
     This bypasses LangChain issues with remote Ollama models.
     """
     try:
+        cfg = _get_db_llm_config()
+        live_model = cfg.get('llm_model') or OVERRIDE_MODEL or cfg.get('ollama_model') or MODEL_NAME
+        live_url = (cfg.get('ollama_url') or OLLAMA_URL or 'http://localhost:11434').rstrip('/')
+
         prompt = f"""Task: Analyze this message and extract the main topic/keywords to create a concise 5-word or shorter title.
 
 Message: "{first_message}"
@@ -356,7 +409,7 @@ Instructions:
 Title:"""
         
         payload = {
-            "model": MODEL_NAME,
+            "model": live_model,
             "prompt": prompt,
             "stream": False,
             "options": {
@@ -366,7 +419,7 @@ Title:"""
         }
         
         response = requests.post(
-            f"{OLLAMA_URL}/api/generate",
+            f"{live_url}/api/generate",
             json=payload,
             timeout=60  # Increased from 30 to 60 seconds
         )
@@ -398,8 +451,11 @@ def generate_chat_title(first_message: str) -> str:
     print(f"[LLM Service] Generating chat title for: {first_message[:50]}...")
     
     try:
+        cfg = _get_db_llm_config()
+        live_provider = cfg.get('llm_provider') or LLM_PROVIDER
+        live_model = cfg.get('llm_model') or OVERRIDE_MODEL or cfg.get('ollama_model') or MODEL_NAME
         # For remote Ollama models, use direct API call to avoid LangChain issues
-        if LLM_PROVIDER == "ollama" and "cloud" in MODEL_NAME:
+        if live_provider == "ollama" and "cloud" in live_model:
             return _generate_title_direct_ollama(first_message)
         
         # Increase temp slightly to avoid getting stuck
@@ -439,6 +495,10 @@ def _generate_refined_title_direct_ollama(history: List[Dict[str, str]]) -> str:
     Generate refined title using direct Ollama API call for remote models.
     """
     try:
+        cfg = _get_db_llm_config()
+        live_model = cfg.get('llm_model') or OVERRIDE_MODEL or cfg.get('ollama_model') or MODEL_NAME
+        live_url = (cfg.get('ollama_url') or OLLAMA_URL or 'http://localhost:11434').rstrip('/')
+
         # Grab the first message, a middle message, and the last 2 
         if len(history) > 6:
             focused_history = [history[0], history[len(history)//2]] + history[-2:]
@@ -462,7 +522,7 @@ Instructions:
 Title:"""
         
         payload = {
-            "model": MODEL_NAME,
+            "model": live_model,
             "prompt": prompt,
             "stream": False,
             "options": {
@@ -472,7 +532,7 @@ Title:"""
         }
         
         response = requests.post(
-            f"{OLLAMA_URL}/api/generate",
+            f"{live_url}/api/generate",
             json=payload,
             timeout=60  # Increased from 30 to 60 seconds
         )
@@ -515,8 +575,11 @@ def generate_comprehensive_chat_title(history: List[Dict[str, str]]) -> str:
     print(f"[LLM Service] Generating comprehensive title from {len(history)} messages...")
     
     try:
+        cfg = _get_db_llm_config()
+        live_provider = cfg.get('llm_provider') or LLM_PROVIDER
+        live_model = cfg.get('llm_model') or OVERRIDE_MODEL or cfg.get('ollama_model') or MODEL_NAME
         # For remote Ollama models, use direct API call
-        if LLM_PROVIDER == "ollama" and "cloud" in MODEL_NAME:
+        if live_provider == "ollama" and "cloud" in live_model:
             return _generate_comprehensive_title_direct_ollama(history)
         
         llm = get_llm(temperature=0.3, max_tokens=100)  # Lower temp for more focused title
@@ -560,6 +623,10 @@ def _generate_comprehensive_title_direct_ollama(history: List[Dict[str, str]]) -
     Generate comprehensive title using direct Ollama API call for remote models.
     """
     try:
+        cfg = _get_db_llm_config()
+        live_model = cfg.get('llm_model') or OVERRIDE_MODEL or cfg.get('ollama_model') or MODEL_NAME
+        live_url = (cfg.get('ollama_url') or OLLAMA_URL or 'http://localhost:11434').rstrip('/')
+
         # Extract all user questions for comprehensive analysis
         user_questions = [msg['content'] for msg in history if msg['role'] == 'user']
         conversation_summary = "\n".join([f"Q{i+1}: {q}" for i, q in enumerate(user_questions)])
@@ -579,7 +646,7 @@ Instructions:
 Title:"""
         
         payload = {
-            "model": MODEL_NAME,
+            "model": live_model,
             "prompt": prompt,
             "stream": False,
             "options": {
@@ -589,7 +656,7 @@ Title:"""
         }
         
         response = requests.post(
-            f"{OLLAMA_URL}/api/generate",
+            f"{live_url}/api/generate",
             json=payload,
             timeout=60  # Increased from 30 to 60 seconds
         )
@@ -623,8 +690,11 @@ def generate_refined_chat_title(history: List[Dict[str, str]]) -> str:
     print(f"[LLM Service] Synthesizing title from {len(history)} messages...")
     
     try:
+        cfg = _get_db_llm_config()
+        live_provider = cfg.get('llm_provider') or LLM_PROVIDER
+        live_model = cfg.get('llm_model') or OVERRIDE_MODEL or cfg.get('ollama_model') or MODEL_NAME
         # For remote Ollama models, use direct API call
-        if LLM_PROVIDER == "ollama" and "cloud" in MODEL_NAME:
+        if live_provider == "ollama" and "cloud" in live_model:
             return _generate_refined_title_direct_ollama(history)
         
         llm = get_llm(temperature=0.4, max_tokens=100) # Lower temp for more "grounded" titles

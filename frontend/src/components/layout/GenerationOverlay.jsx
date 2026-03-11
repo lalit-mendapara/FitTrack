@@ -27,13 +27,13 @@ const GenerationOverlay = ({
     const Icon = type === 'workout' ? Dumbbell : Apple; // Or RefreshCw generic
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300 pointer-events-auto cursor-wait">
+        <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300 pointer-events-auto cursor-wait">
            {/* Prevent any clicks passing through with full screen blocking div above */}
            
-           <div className="bg-white rounded-[2rem] p-10 shadow-2xl flex flex-col items-center gap-6 max-w-sm w-full border border-white/20 relative overflow-hidden">
+           <div className="bg-white rounded-2rem p-10 shadow-2xl flex flex-col items-center gap-6 max-w-sm w-full border border-white/20 relative overflow-hidden">
                
                {/* Background decoration */}
-               <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 animate-gradient-x"></div>
+               <div className="absolute top-0 inset-x-0 h-1 bg-linear-to-r from-indigo-500 via-purple-500 to-pink-500 animate-gradient-x"></div>
                
                {isSuccess ? (
                  <div className="w-20 h-20 bg-green-100/50 rounded-full flex items-center justify-center text-green-500 animate-in zoom-in duration-300">
@@ -56,7 +56,7 @@ const GenerationOverlay = ({
                   <h3 className="text-2xl font-black text-gray-800 animate-pulse">
                      {isSuccess ? successTitle : title}
                   </h3>
-                  <p className="text-gray-500 font-medium text-lg min-w-[200px]">
+                  <p className="text-gray-500 font-medium text-lg min-w-200px">
                      {steps[currentStepIndex]}
                      {!isSuccess && <span className="animate-pulse">...</span>}
                   </p>

@@ -14,3 +14,4 @@ from app.models.social_event import SocialEvent
 from app.models.chat import ChatHistory, ChatSession
 from app.models.feast_config import FeastConfig, FeastMealOverride
 from app.models.admin import Admin
+from app.models.system_setting import SystemSetting

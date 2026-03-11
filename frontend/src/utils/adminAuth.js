@@ -1,3 +1,5 @@
+import { jwtDecode } from 'jwt-decode';
+
 const ADMIN_TOKEN_KEY = 'admin_token';
 const ADMIN_USER_KEY = 'admin_user';
 
@@ -20,7 +22,22 @@ export const adminAuth = {
   },
 
   isAuthenticated: () => {
-    return !!localStorage.getItem(ADMIN_TOKEN_KEY);
+    const token = localStorage.getItem(ADMIN_TOKEN_KEY);
+    if (!token) return false;
+
+    try {
+      const decoded = jwtDecode(token);
+      // Check if token is expired (exp is in seconds)
+      if (decoded.exp * 1000 < Date.now()) {
+        adminAuth.logout();
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.error('Invalid token format:', e);
+      adminAuth.logout();
+      return false;
+    }
   },
 
   logout: () => {
@@ -29,6 +46,12 @@ export const adminAuth = {
   },
 
   getAuthHeader: () => {
+    if (!adminAuth.isAuthenticated()) {
+      // If token is missing or expired, redirect automatically and clear state
+      adminAuth.logout();
+      window.location.replace('/admin/login');
+      return {};
+    }
     const token = adminAuth.getToken();
     return token ? { Authorization: `Bearer ${token}` } : {};
   }

@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import AdminLayout from '../../components/admin/AdminLayout';
 import { adminAuth } from '../../utils/adminAuth';
 import { ArrowLeft, Calendar, TrendingUp, User, Utensils, Dumbbell, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
+import { CheckCircle, XCircle } from '@phosphor-icons/react';
 
 const FeastDetail = () => {
   const { id } = useParams();
@@ -129,7 +130,7 @@ const FeastDetail = () => {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-          <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-lg shadow">
+          <div className="bg-linear-to-br from-blue-50 to-blue-100 p-6 rounded-lg shadow">
             <div className="flex items-center justify-between mb-2">
               <Calendar className="w-8 h-8 text-blue-600" />
               <span className="text-sm text-blue-600 font-medium">Days Until Event</span>
@@ -138,7 +139,7 @@ const FeastDetail = () => {
             <div className="text-sm text-blue-700 mt-1">Event: {formatDate(feast.event_date)}</div>
           </div>
 
-          <div className="bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-lg shadow">
+          <div className="bg-linear-to-br from-green-50 to-green-100 p-6 rounded-lg shadow">
             <div className="flex items-center justify-between mb-2">
               <TrendingUp className="w-8 h-8 text-green-600" />
               <span className="text-sm text-green-600 font-medium">Projected Banked</span>
@@ -147,7 +148,7 @@ const FeastDetail = () => {
             <div className="text-sm text-green-700 mt-1">Target: {feast.target_bank_calories} kcal</div>
           </div>
 
-          <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-6 rounded-lg shadow">
+          <div className="bg-linear-to-br from-orange-50 to-orange-100 p-6 rounded-lg shadow">
             <div className="flex items-center justify-between mb-2">
               <Utensils className="w-8 h-8 text-orange-600" />
               <span className="text-sm text-orange-600 font-medium">Daily Deduction</span>
@@ -249,9 +250,15 @@ const FeastDetail = () => {
             <div className="space-y-3">
               <div className="flex justify-between items-center">
                 <span className="text-sm text-gray-600">Workout Boost:</span>
-                <span className={`font-medium ${feast.workout_boost_enabled ? 'text-green-600' : 'text-gray-400'}`}>
-                  {feast.workout_boost_enabled ? '✓ Enabled' : '✗ Disabled'}
-                </span>
+                {feast.workout_boost_enabled ? (
+                  <span className="inline-flex items-center gap-1 font-medium text-green-600">
+                    <CheckCircle size={16} weight="fill" /> Enabled
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 font-medium text-gray-400">
+                    <XCircle size={16} weight="fill" /> Disabled
+                  </span>
+                )}
               </div>
               {feast.user_selected_deduction && (
                 <div className="flex justify-between items-center">
@@ -283,6 +290,12 @@ const FeastDetail = () => {
             </div>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
               {(() => {
+                const formatCalories = (val) => {
+                  if (typeof val === 'number') return val.toFixed(1);
+                  if (typeof val === 'string' && val.trim() !== '' && !isNaN(Number(val))) return Number(val).toFixed(1);
+                  return val;
+                };
+
                 // Handle if original_diet_snapshot is a nested object with 'total' and 'meals'
                 const snapshotData = feast.original_diet_snapshot;
                 
@@ -295,18 +308,18 @@ const FeastDetail = () => {
                   return (
                     <>
                       {/* Total Card */}
-                      <div className="bg-gradient-to-br from-green-50 to-green-100 p-4 rounded-lg border border-green-200">
+                      <div className="bg-linear-to-br from-green-50 to-green-100 p-4 rounded-lg border border-green-200">
                         <div className="text-xs font-medium text-green-600 uppercase mb-1">Total</div>
-                        <div className="text-2xl font-bold text-green-900">{snapshotData.total}</div>
+                        <div className="text-2xl font-bold text-green-900">{formatCalories(snapshotData.total)}</div>
                         <div className="text-xs text-green-700 mt-1">kcal</div>
                       </div>
                       
                       {/* Individual Meal Cards */}
                       {Object.entries(meals).map(([meal, calories]) => (
-                        <div key={meal} className="bg-gradient-to-br from-blue-50 to-blue-100 p-4 rounded-lg border border-blue-200">
+                        <div key={meal} className="bg-linear-to-br from-blue-50 to-blue-100 p-4 rounded-lg border border-blue-200">
                           <div className="text-xs font-medium text-blue-600 uppercase mb-1">{meal}</div>
                           <div className="text-2xl font-bold text-blue-900">
-                            {typeof calories === 'number' ? calories.toFixed(1) : calories}
+                            {formatCalories(calories)}
                           </div>
                           <div className="text-xs text-blue-700 mt-1">kcal</div>
                         </div>
@@ -316,14 +329,12 @@ const FeastDetail = () => {
                 } else {
                   // Fallback: treat entire object as meal entries
                   return Object.entries(snapshotData).map(([meal, calories]) => {
-                    const calorieValue = typeof calories === 'number' 
-                      ? calories.toFixed(1) 
-                      : typeof calories === 'string' 
-                      ? calories 
-                      : JSON.stringify(calories);
+                    const calorieValue = typeof calories === 'object' && calories !== null 
+                      ? JSON.stringify(calories) 
+                      : formatCalories(calories);
                     
                     return (
-                      <div key={meal} className="bg-gradient-to-br from-blue-50 to-blue-100 p-4 rounded-lg border border-blue-200">
+                      <div key={meal} className="bg-linear-to-br from-blue-50 to-blue-100 p-4 rounded-lg border border-blue-200">
                         <div className="text-xs font-medium text-blue-600 uppercase mb-1">{meal}</div>
                         <div className="text-2xl font-bold text-blue-900">{calorieValue}</div>
                         <div className="text-xs text-blue-700 mt-1">kcal</div>
@@ -345,15 +356,15 @@ const FeastDetail = () => {
             
             {/* Workout Overview */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-              <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-4 rounded-lg border border-purple-200">
+              <div className="bg-linear-to-br from-purple-50 to-purple-100 p-4 rounded-lg border border-purple-200">
                 <div className="text-sm font-medium text-purple-600 mb-1">Day Name</div>
                 <div className="text-lg font-bold text-purple-900">{feast.feast_workout_data.day_name || 'N/A'}</div>
               </div>
-              <div className="bg-gradient-to-br from-green-50 to-green-100 p-4 rounded-lg border border-green-200">
+              <div className="bg-linear-to-br from-green-50 to-green-100 p-4 rounded-lg border border-green-200">
                 <div className="text-sm font-medium text-green-600 mb-1">Workout Name</div>
                 <div className="text-lg font-bold text-green-900">{feast.feast_workout_data.workout_name || 'N/A'}</div>
               </div>
-              <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-4 rounded-lg border border-orange-200">
+              <div className="bg-linear-to-br from-orange-50 to-orange-100 p-4 rounded-lg border border-orange-200">
                 <div className="text-sm font-medium text-orange-600 mb-1">Primary Muscle</div>
                 <div className="text-lg font-bold text-orange-900">{feast.feast_workout_data.primary_muscle_group || 'N/A'}</div>
               </div>
@@ -398,8 +409,8 @@ const FeastDetail = () => {
                       style={{ transform: `translateX(-${currentExerciseIndex * 100}%)` }}
                     >
                       {feast.feast_workout_data.cardio_exercises.map((exercise, idx) => (
-                        <div key={idx} className="w-full flex-shrink-0 px-2">
-                          <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-lg p-6 border border-red-200">
+                        <div key={idx} className="w-full shrink-0 px-2">
+                          <div className="bg-linear-to-br from-red-50 to-red-100 rounded-lg p-6 border border-red-200">
                             <div className="flex items-start justify-between mb-4">
                               <div>
                                 <h4 className="text-lg font-bold text-red-900 mb-1">{exercise.exercise}</h4>

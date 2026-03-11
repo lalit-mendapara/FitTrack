@@ -698,7 +698,7 @@ const WorkoutPlan = ({ isEmbedded = false, onPlanGenerated }) => {
                            <div className="relative" ref={calendarRef}>
                                <button 
                                    onClick={() => setIsCalendarOpen(!isCalendarOpen)}
-                                   className="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors text-xs font-semibold text-gray-600 flex items-center gap-1.5 min-w-[140px] justify-center cursor-pointer shadow-sm"
+                                   className="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors text-xs font-semibold text-gray-600 flex items-center gap-1.5 min-w-140px justify-center cursor-pointer shadow-sm"
                                >
                                    <Calendar size={12} className="text-gray-500" />
                                    <span>

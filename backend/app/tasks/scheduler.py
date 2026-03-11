@@ -81,11 +81,29 @@ from app.crud import meal_plan as crud_meal_plan
 def generate_daily_plans_scheduler():
     """
     Beat task: Runs every hour. 
-    Finds users where local time is 5:00 AM (± buffer) and triggers worker task.
+    Finds users where local time matches the configured schedule hour and triggers worker task.
     Skips if a plan for today already exists.
     """
     db: Session = SessionLocal()
     try:
+        # Get configured schedule hour from database (default: 5 AM)
+        from app.models.system_setting import SystemSetting
+        schedule_hour_setting = db.query(SystemSetting).filter(
+            SystemSetting.key == "diet_plan_schedule_hour"
+        ).first()
+        
+        try:
+            schedule_hour = int(schedule_hour_setting.value) if schedule_hour_setting and schedule_hour_setting.value else 5
+            # Validate hour is in valid range
+            if not (0 <= schedule_hour <= 23):
+                logger.warning(f"Invalid schedule hour {schedule_hour}, using default 5 AM")
+                schedule_hour = 5
+        except (ValueError, TypeError):
+            logger.warning(f"Could not parse schedule hour, using default 5 AM")
+            schedule_hour = 5
+        
+        logger.info(f"Running daily plan scheduler at configured hour: {schedule_hour}:00")
+        
         # Get all profiles
         profiles = db.query(UserProfile).all()
         
@@ -98,8 +116,8 @@ def generate_daily_plans_scheduler():
                 tz = pytz.timezone(user_tz_str)
                 user_now = datetime.now(tz)
                 
-                # Check if it is 5 AM or later (Catch-up logic)
-                if user_now.hour >= 5:
+                # Check if it is the configured schedule hour or later (Catch-up logic)
+                if user_now.hour >= schedule_hour:
                     
                     # IDEMPOTENCY CHECK:
                     # Check if user already has a plan for TODAY

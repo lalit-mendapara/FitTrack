@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../../components/admin/AdminLayout';
 import { adminAuth } from '../../utils/adminAuth';
 import { Search, Filter, Calendar, TrendingUp } from 'lucide-react';
+import { CheckCircle, XCircle } from '@phosphor-icons/react';
 
 const FeastList = () => {
   const navigate = useNavigate();
@@ -245,9 +246,9 @@ const FeastList = () => {
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{feast.target_bank_calories} kcal</td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           {feast.workout_boost_enabled ? (
-                            <span className="text-green-600 text-sm">✓ Enabled</span>
+                            <span className="inline-flex items-center gap-1 text-green-600 text-sm"><CheckCircle size={16} weight="fill" /> Enabled</span>
                           ) : (
-                            <span className="text-gray-400 text-sm">✗ Disabled</span>
+                            <span className="inline-flex items-center gap-1 text-gray-400 text-sm"><XCircle size={16} weight="fill" /> Disabled</span>
                           )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">

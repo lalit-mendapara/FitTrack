@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../../components/admin/AdminLayout';
 import { adminAuth } from '../../utils/adminAuth';
+import { Users, ForkKnife, Barbell, Confetti, Plus } from '@phosphor-icons/react';
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
@@ -59,7 +60,7 @@ const AdminDashboard = () => {
                 </p>
               </div>
               <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                <span className="text-2xl">👥</span>
+                <Users size={24} className="text-blue-600" weight="duotone" />
               </div>
             </div>
           </div>
@@ -73,7 +74,7 @@ const AdminDashboard = () => {
                 </p>
               </div>
               <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                <span className="text-2xl">🥗</span>
+                <ForkKnife size={24} className="text-green-600" weight="duotone" />
               </div>
             </div>
           </div>
@@ -87,7 +88,7 @@ const AdminDashboard = () => {
                 </p>
               </div>
               <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-                <span className="text-2xl">💪</span>
+                <Barbell size={24} className="text-purple-600" weight="duotone" />
               </div>
             </div>
           </div>
@@ -101,7 +102,7 @@ const AdminDashboard = () => {
                 </p>
               </div>
               <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
-                <span className="text-2xl">🎉</span>
+                <Confetti size={24} className="text-orange-600" weight="duotone" />
               </div>
             </div>
           </div>
@@ -114,21 +115,21 @@ const AdminDashboard = () => {
               onClick={() => navigate('/admin/foods/new')}
               className="p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-purple-500 hover:bg-purple-50 transition-colors"
             >
-              <span className="text-2xl mb-2 block">➕</span>
+              <Plus size={28} className="text-gray-500 mb-2 mx-auto" weight="bold" />
               <span className="text-sm font-medium">Add Food Item</span>
             </button>
             <button 
               onClick={() => navigate('/admin/exercises/new')}
               className="p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-purple-500 hover:bg-purple-50 transition-colors"
             >
-              <span className="text-2xl mb-2 block">💪</span>
+              <Barbell size={28} className="text-gray-500 mb-2 mx-auto" weight="duotone" />
               <span className="text-sm font-medium">Add Exercise</span>
             </button>
             <button 
               onClick={() => navigate('/admin/users')}
               className="p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-purple-500 hover:bg-purple-50 transition-colors"
             >
-              <span className="text-2xl mb-2 block">👥</span>
+              <Users size={28} className="text-gray-500 mb-2 mx-auto" weight="duotone" />
               <span className="text-sm font-medium">View Users</span>
             </button>
           </div>

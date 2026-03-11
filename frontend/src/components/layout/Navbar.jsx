@@ -107,7 +107,7 @@ const Navbar = ({ transparentTextColor = 'text-gray-600' }) => {
           {user ? (
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-r from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold shadow-md">
+                <div className="w-10 h-10 rounded-full bg-linear-to-r from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold shadow-md">
                   {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
                 </div>
                 <div className="flex flex-col">
@@ -140,7 +140,7 @@ const Navbar = ({ transparentTextColor = 'text-gray-600' }) => {
         </div>
 
         {/* Mobile Menu Button - Replaces Desktop Nav on Mobile */}
-        <div className="md:hidden z-[60]">
+        <div className="md:hidden z-60">
           <button 
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} 
             className={`${mobileButtonClass} focus:outline-none transition-transform duration-300 ${isMobileMenuOpen ? 'rotate-90' : ''}`}
@@ -159,7 +159,7 @@ const Navbar = ({ transparentTextColor = 'text-gray-600' }) => {
 
         {/* Mobile Menu Overlay/Backdrop */}
         <div 
-          className={`fixed inset-0 bg-black/70 backdrop-blur-md z-[100] transition-opacity duration-300 ${
+          className={`fixed inset-0 bg-black/70 backdrop-blur-md z-100 transition-opacity duration-300 ${
             isMobileMenuOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
           }`}
           onClick={() => setIsMobileMenuOpen(false)}
@@ -167,7 +167,7 @@ const Navbar = ({ transparentTextColor = 'text-gray-600' }) => {
 
         {/* Updated Sidebar Menu - Glassmorphism optimized for readability */}
         <div 
-          className={`fixed top-0 right-0 h-screen w-72 bg-white/95 backdrop-blur-2xl z-[110] shadow-2xl transform transition-transform duration-300 ease-in-out flex flex-col border-l border-white/20 ${
+          className={`fixed top-0 right-0 h-screen w-72 bg-white/95 backdrop-blur-2xl z-110 shadow-2xl transform transition-transform duration-300 ease-in-out flex flex-col border-l border-white/20 ${
             isMobileMenuOpen ? 'translate-x-0' : 'translate-x-full'
           }`}
         >
@@ -208,7 +208,7 @@ const Navbar = ({ transparentTextColor = 'text-gray-600' }) => {
             {user ? (
               <div className="space-y-4">
                 <div className="flex items-center gap-3 p-3 bg-white rounded-2xl shadow-sm border border-gray-200">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-500 flex items-center justify-center text-white font-bold text-xl shadow-md">
+                    <div className="w-12 h-12 rounded-full bg-linear-to-tr from-indigo-600 to-purple-500 flex items-center justify-center text-white font-bold text-xl shadow-md">
                       {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
                     </div>
                     <div className="flex flex-col overflow-hidden">

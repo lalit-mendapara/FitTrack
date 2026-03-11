@@ -21,6 +21,7 @@ import ExerciseForm from './pages/admin/ExerciseForm';
 import FeastList from './pages/admin/FeastList';
 import FeastDetail from './pages/admin/FeastDetail';
 import Analytics from './pages/admin/Analytics';
+import SystemSettings from './pages/admin/SystemSettings';
 import AdminProtectedRoute from './components/admin/AdminProtectedRoute';
 import './index.css';
 
@@ -173,6 +174,14 @@ function App() {
           element={
             <AdminProtectedRoute>
               <Analytics />
+            </AdminProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/admin/settings" 
+          element={
+            <AdminProtectedRoute>
+              <SystemSettings />
             </AdminProtectedRoute>
           } 
         />

@@ -94,10 +94,12 @@
 backend/
 ├── alembic/
 │   └── versions/
-│       └── 2026_03_992161264b12_add_admin_table.py
+│       ├── 2026_03_992161264b12_add_admin_table.py
+│       └── 2026_03_f1e2d3c4b5a6_add_system_settings_table.py
 ├── app/
 │   ├── models/
 │   │   ├── admin.py
+│   │   ├── system_setting.py
 │   │   ├── food_item.py
 │   │   ├── exercise.py
 │   │   └── feast_config.py
@@ -118,7 +120,8 @@ backend/
 │   │       ├── analytics.py
 │   │       ├── foods.py
 │   │       ├── exercises.py
-│   │       └── feasts.py
+│   │       ├── feasts.py
+│   │       └── settings.py
 │   ├── utils/
 │   │   └── admin_auth.py
 │   └── main.py (updated with admin routes)
@@ -140,14 +143,15 @@ frontend/
     │       ├── ExerciseList.jsx
     │       ├── ExerciseForm.jsx
     │       ├── FeastList.jsx
-    │       └── FeastDetail.jsx
+    │       ├── FeastDetail.jsx
+    │       └── SystemSettings.jsx
     ├── components/
     │   └── admin/
     │       ├── AdminLayout.jsx
     │       └── AdminProtectedRoute.jsx
     ├── utils/
     │   └── adminAuth.js
-    └── App.jsx (updated with admin routes)
+    └── App.jsx (updated with admin routes + /admin/settings)
 ```
 
 ---
@@ -318,6 +322,13 @@ docker compose exec postgres psql -U lalit -d fitness_track -c "SELECT COUNT(*) 
 - `GET /api/admin/analytics/ai-coach-usage` - Get AI Coach usage statistics
 - `GET /api/admin/analytics/feast-mode-stats` - Get Feast Mode statistics
 - `GET /api/admin/analytics/user-demographics` - Get user demographics data
+
+### System Settings:
+- `GET /api/admin/settings` - List all settings grouped by category
+- `PUT /api/admin/settings/{key}` - Update a setting value
+- `GET /api/admin/settings/health` - Live service health checks (DB, Redis, Qdrant, Ollama)
+- `GET /api/admin/settings/celery-status` - Celery worker + beat schedule status
+- `POST /api/admin/settings/test-llm` - Test LLM provider connectivity
 
 ### Feast Management:
 - `GET /api/admin/feasts` - List feast configurations (with pagination & filters)
@@ -524,15 +535,110 @@ docker compose exec postgres psql -U lalit -d fitness_track -c "SELECT COUNT(*) 
 
 ---
 
-## 🎯 Next Modules (Pending)
+---
 
-Based on `fittrack_core_features_final.md` priority order:
+### **Phase 8: System Settings** ⚙️ ✅
+**Status:** Fully Implemented & Tested
 
-### 5. **System Settings** ⚙️ (Priority 6)
-- [ ] Backend: LLM configuration APIs
-- [ ] Backend: Celery task monitoring
-- [ ] Backend: Database health check
-- [ ] Frontend: Settings page with forms
+#### Backend APIs:
+- ✅ `GET /api/admin/settings` — List all settings grouped by category (seeds from env on first call)
+- ✅ `PUT /api/admin/settings/{key}` — Update a single setting value (persisted to DB)
+- ✅ `GET /api/admin/settings/health` — Live health checks: PostgreSQL, Redis, Qdrant, Ollama
+- ✅ `GET /api/admin/settings/celery-status` — Celery worker inspect + beat schedule
+- ✅ `POST /api/admin/settings/test-llm` — Test LLM connectivity (Ollama tags API / OpenRouter / OpenAI)
+
+#### Frontend Page:
+- ✅ Settings page: `/admin/settings` — 3-tab layout
+  - **🤖 LLM Configuration** — provider dropdown, model, Ollama URL, API key (masked), Test Connection button with live result
+  - **💚 System Health** — real-time status cards for PostgreSQL / Redis / Qdrant / Ollama with latency in ms
+  - **⚙️ Celery Tasks** — workers table (name, status, active tasks, scheduled count) + registered beat schedule
+
+#### Database:
+- ✅ New table `system_settings` (key–value store)
+- ✅ Schema: `key` (PK), `value`, `description`, `category`, `is_sensitive`, `updated_at`, `updated_by` (FK → admins)
+- ✅ Migration: `2026_03_f1e2d3c4b5a6_add_system_settings_table.py`
+- ✅ Lazy-seeded from environment variables on the first API call
+
+#### Features:
+- ✅ Sensitive values (API keys, secret keys) auto-masked in GET responses (`abcd***wxyz`)
+- ✅ Conditional fields: Ollama URL/model hidden when provider ≠ ollama; API key hidden for Ollama
+- ✅ Per-field inline Save with ✓/✗ feedback
+- ✅ Test Connection tests live endpoint (reads latest DB values, falls back to env)
+- ✅ Health cards show latency in ms + detail message
+- ✅ Celery tab shows "No workers" warning with start command when offline
+- ✅ Beat schedule table shows all registered periodic tasks and their crontab
+
+---
+
+## ⚙️ System Settings — Configuration Explained
+
+### How Settings Storage Works
+
+```
+Environment (.env / docker-compose.yml)
+         │
+         ▼  (on first GET /api/admin/settings)
+┌─────────────────────────┐
+│  system_settings table  │  ← DB key-value store (source of truth for UI)
+│  key | value | category │
+└─────────────────────────┘
+         │
+         ▼  (read by Test Connection & Health endpoints)
+   Live service calls (Ollama, Redis, Qdrant, PostgreSQL)
+```
+
+1. **Lazy seeding** — On the first `GET /api/admin/settings` call, the API reads all env vars (`LLM_PROVIDER`, `OLLAMA_URL`, etc.) and inserts them into `system_settings` **only if those keys don't already exist**. This means env vars bootstrap the DB but never overwrite manual edits.
+
+2. **DB as display source** — The settings page always shows values from the DB (never raw env). Sensitive keys (`llm_api_key`, `langfuse_secret_key`) are masked as `abcd***wxyz` in GET responses. The actual value is stored and used unmasked internally.
+
+3. **Per-field Save** — Each setting has its own Save button. `PUT /api/admin/settings/{key}` updates only that row in `system_settings` and records `updated_by` (admin FK).
+
+4. **LLM service restart note** — `llm_service.py` reads `LLM_PROVIDER / LLM_MODEL / LLM_API_KEY` from env at **import time** (module load). Saving new values to the DB does NOT hot-reload the running service. A `docker compose restart backend` is required for LLM changes to take effect in plan generation. The **Test Connection** and **Health** endpoints, however, always read from the DB in real time.
+
+5. **Health checks** — `GET /api/admin/settings/health` fires live TCP/HTTP calls at request time:
+   - **PostgreSQL**: `SELECT 1` via SQLAlchemy
+   - **Redis**: `redis.ping()` via redis-py
+   - **Qdrant**: `GET {QDRANT_URL}/healthz`
+   - **Ollama**: `GET {OLLAMA_URL}/api/tags` (only shown when `llm_provider = ollama`)
+
+6. **Celery inspect** — `GET /api/admin/settings/celery-status` calls `celery_app.control.inspect(timeout=3).active()` which broadcasts a ping over Redis to all workers. If no workers reply within 3 s, status is `no_workers`. The beat schedule is read from `celery_app.conf.beat_schedule` (static — no DB).
+
+### Settings Categories
+
+| Category | Keys | Sensitive |
+|---|---|---|
+| `llm` | `llm_provider`, `llm_model`, `ollama_url`, `ollama_model`, `llm_api_key` | `llm_api_key` only |
+| `observability` | `langfuse_host`, `langfuse_public_key`, `langfuse_secret_key` | `langfuse_secret_key` |
+| `general` | `app_timezone` | none |
+
+### Conditional UI Logic (Frontend)
+
+- When `llm_provider = ollama` → shows `ollama_url`, `ollama_model`; hides `llm_api_key`
+- When `llm_provider = openrouter` or `openai` → shows `llm_api_key`; hides Ollama fields
+- The **Test Connection** button reads `llm_provider` from the DB to decide which endpoint to call
+
+### Docker Commands for System Settings
+
+```bash
+# Verify migration applied
+docker compose exec backend alembic current
+# Expected: f1e2d3c4b5a6 (head)
+
+# Check system_settings table
+docker compose exec postgres psql -U lalit -d fitness_track -c "SELECT key, category, is_sensitive FROM system_settings ORDER BY category, key;"
+
+# After updating LLM settings in admin UI, restart backend to apply
+docker compose restart backend
+
+# Check Celery worker is online (required for Celery tab to show workers)
+docker compose logs --tail=20 celery
+```
+
+---
+
+## 🎯 All Modules Complete ✅
+
+All 8 planned admin modules have been implemented.
 
 ---
 
@@ -617,6 +723,6 @@ docker compose restart backend frontend
 
 ---
 
-**Last Updated:** March 9, 2026
-**Status:** Analytics Dashboard Module Complete ✅
-**Next:** System Settings Module
+**Last Updated:** March 10, 2026
+**Status:** All Modules Complete ✅ (Phases 1–8)
+**Next:** —

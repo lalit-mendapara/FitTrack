@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import AdminLayout from '../../components/admin/AdminLayout';
 import { adminAuth } from '../../utils/adminAuth';
+import { ChatDots, EnvelopeSimple, ChartBar, Fire, ForkKnife, Barbell, Confetti } from '@phosphor-icons/react';
 import {
   LineChart,
   Line,
@@ -143,50 +144,50 @@ const Analytics = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-lg p-6 text-white">
+          <div className="bg-linear-to-br from-blue-500 to-blue-600 rounded-lg shadow-lg p-6 text-white">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-blue-100 text-sm">Total Chat Sessions</p>
                 <p className="text-3xl font-bold mt-2">{aiCoachStats.total_sessions}</p>
               </div>
               <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center">
-                <span className="text-2xl">💬</span>
+                <ChatDots size={24} className="text-white" weight="duotone" />
               </div>
             </div>
           </div>
 
-          <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg shadow-lg p-6 text-white">
+          <div className="bg-linear-to-br from-green-500 to-green-600 rounded-lg shadow-lg p-6 text-white">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-green-100 text-sm">Total Messages</p>
                 <p className="text-3xl font-bold mt-2">{aiCoachStats.total_messages}</p>
               </div>
               <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center">
-                <span className="text-2xl">📨</span>
+                <EnvelopeSimple size={24} className="text-white" weight="duotone" />
               </div>
             </div>
           </div>
 
-          <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg shadow-lg p-6 text-white">
+          <div className="bg-linear-to-br from-purple-500 to-purple-600 rounded-lg shadow-lg p-6 text-white">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-purple-100 text-sm">Avg Messages/Session</p>
                 <p className="text-3xl font-bold mt-2">{aiCoachStats.avg_messages_per_session.toFixed(1)}</p>
               </div>
               <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center">
-                <span className="text-2xl">📊</span>
+                <ChartBar size={24} className="text-white" weight="duotone" />
               </div>
             </div>
           </div>
 
-          <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg shadow-lg p-6 text-white">
+          <div className="bg-linear-to-br from-orange-500 to-orange-600 rounded-lg shadow-lg p-6 text-white">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-orange-100 text-sm">Active Sessions (7d)</p>
                 <p className="text-3xl font-bold mt-2">{aiCoachStats.active_sessions_last_7_days}</p>
               </div>
               <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center">
-                <span className="text-2xl">🔥</span>
+                <Fire size={24} className="text-white" weight="duotone" />
               </div>
             </div>
           </div>
@@ -302,14 +303,14 @@ const Analytics = () => {
                   <p className="text-sm text-gray-600">Total Meal Plans</p>
                   <p className="text-2xl font-bold text-blue-600">{planStats.total_meal_plans}</p>
                 </div>
-                <span className="text-3xl">🍽️</span>
+                <ForkKnife size={32} className="text-blue-400" weight="duotone" />
               </div>
               <div className="flex items-center justify-between p-4 bg-purple-50 rounded-lg">
                 <div>
                   <p className="text-sm text-gray-600">Total Workout Plans</p>
                   <p className="text-2xl font-bold text-purple-600">{planStats.total_workout_plans}</p>
                 </div>
-                <span className="text-3xl">💪</span>
+                <Barbell size={32} className="text-purple-400" weight="duotone" />
               </div>
             </div>
           </div>
@@ -322,14 +323,14 @@ const Analytics = () => {
                   <p className="text-sm text-gray-600">Total Feasts</p>
                   <p className="text-2xl font-bold text-green-600">{feastStats.total_feasts}</p>
                 </div>
-                <span className="text-3xl">🎉</span>
+                <Confetti size={32} className="text-green-400" weight="duotone" />
               </div>
               <div className="flex items-center justify-between p-4 bg-orange-50 rounded-lg">
                 <div>
                   <p className="text-sm text-gray-600">Currently Active</p>
                   <p className="text-2xl font-bold text-orange-600">{feastStats.active_feasts}</p>
                 </div>
-                <span className="text-3xl">🔥</span>
+                <Fire size={32} className="text-orange-400" weight="duotone" />
               </div>
             </div>
           </div>

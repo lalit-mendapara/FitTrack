@@ -876,7 +876,7 @@ const AICoach = () => {
                                             </>
                                         ) : msg.type === 'ai' ? (
                                             <>
-                                                <div className="prose prose-sm max-w-none prose-headings:text-gray-900 prose-p:text-gray-800 prose-li:text-gray-800 prose-strong:text-gray-900 break-words overflow-x-auto">
+                                                <div className="prose prose-sm max-w-none prose-headings:text-gray-900 prose-p:text-gray-800 prose-li:text-gray-800 prose-strong:text-gray-900 wrap-break-word overflow-x-auto">
                                                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
                                                         {msg.text}
                                                     </ReactMarkdown>
