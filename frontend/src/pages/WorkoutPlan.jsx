@@ -71,7 +71,8 @@ const WorkoutPlan = ({ isEmbedded = false, onPlanGenerated }) => {
     generating, 
     error, 
     showProfileUpdateWarning, 
-    handleGenerate: generatePlan 
+    handleGenerate: generatePlan,
+    refreshPlan
   } = useWorkoutPlan(onGenerateStart, onGenerateEnd);
 
   // Note: Place hooks that depend on `plan` below its initialization!
@@ -263,14 +264,23 @@ const WorkoutPlan = ({ isEmbedded = false, onPlanGenerated }) => {
                          const isOutOfRange = isBefore(day, planStartDate) || isAfter(day, planEndDate);
                          const isToday = isSameDay(day, new Date());
                          
+                         const selectDate = new Date(day);
+                         selectDate.setHours(0,0,0,0);
+                         const msDiff = selectDate - planStartDate;
+                         const tzOffsetDiff = selectDate.getTimezoneOffset() - planStartDate.getTimezoneOffset();
+                         const msAdjusted = msDiff + (tzOffsetDiff * 60 * 1000);
+                         const daysDiff = Math.floor(msAdjusted / (1000 * 60 * 60 * 24));
+                         const weekOfThisDay = Math.floor(daysDiff / 7) + 1;
+                         const isCurrentWeek = !isOutOfRange && weekOfThisDay === currentWeek;
+                         
                          return (
                              <button
                                  key={`day-${j}`}
                                  disabled={isOutOfRange}
                                  onClick={(e) => { e.stopPropagation(); handleDateSelect(day); }}
                                  className={`h-8 w-8 mx-auto flex items-center justify-center rounded-full text-xs transition-colors
-                                     ${isOutOfRange ? 'text-gray-300 cursor-not-allowed opacity-50' : 'text-gray-700 hover:bg-indigo-100 hover:text-indigo-700 font-medium'}
-                                     ${isToday && !isOutOfRange ? 'bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold' : ''}
+                                     ${isOutOfRange ? 'text-gray-300 cursor-not-allowed opacity-50' : (isCurrentWeek ? 'bg-purple-600 text-white font-bold hover:bg-purple-700 hover:text-white' : 'text-gray-700 hover:bg-indigo-100 hover:text-indigo-700 font-medium')}
+                                     ${isToday && !isOutOfRange && !isCurrentWeek ? 'bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold' : ''}
                                  `}
                              >
                                  {format(day, 'd')}
@@ -547,9 +557,10 @@ const WorkoutPlan = ({ isEmbedded = false, onPlanGenerated }) => {
         {feastStatus && (
           <FeastModeBanner 
             event={feastStatus} 
-            onUpdate={() => {
-              feastModeService.getStatus().then(status => setFeastStatus(status));
-              window.location.reload(); 
+            onUpdate={async () => {
+              const status = await feastModeService.getStatus();
+              setFeastStatus(status);
+              await refreshPlan();
             }} 
           />
         )}

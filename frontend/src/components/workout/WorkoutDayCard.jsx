@@ -101,11 +101,21 @@ const WorkoutDayCard = ({ dayPlan, onSeeExercises, date, feastStatus, isLoggedDa
             </div>
         </div>
 
-        <div className="bg-gray-50/80 rounded-2xl p-5 border border-gray-100 mb-8 backdrop-blur-sm flex-1">
-            <h4 className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-2">Primary Muscle Group</h4>
-            <p className="text-gray-600 text-sm leading-relaxed font-medium line-clamp-4">
-                {effectiveDayPlan.primary_muscle_group || effectiveDayPlan.focus}
-            </p>
+        <div className="space-y-4 flex-1 mb-8">
+            {effectiveDayPlan.notes && (
+                <div className="bg-purple-50 rounded-2xl p-4 border border-purple-200 backdrop-blur-sm">
+                    <h4 className="text-[10px] font-extrabold text-purple-600 uppercase tracking-widest mb-2">Special Note</h4>
+                    <p className="text-purple-700 text-sm leading-relaxed font-semibold">
+                        {effectiveDayPlan.notes}
+                    </p>
+                </div>
+            )}
+            <div className="bg-gray-50/80 rounded-2xl p-5 border border-gray-100 backdrop-blur-sm">
+                <h4 className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-2">Primary Muscle Group</h4>
+                <p className="text-gray-600 text-sm leading-relaxed font-medium line-clamp-4">
+                    {effectiveDayPlan.primary_muscle_group || effectiveDayPlan.focus}
+                </p>
+            </div>
         </div>
 
         <div className="flex items-center justify-between border-t border-gray-100 pt-6 mt-auto">

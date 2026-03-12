@@ -19,6 +19,7 @@ export const useWorkoutPlan = (onGenerateStart, onGenerateEnd) => {
             let planData = null;
             try {
                 planData = await getCurrentWorkoutPlan();
+                console.log('[FEAST-DEBUG] Plan received from API:', planData?.weekly_schedule ? Object.entries(planData.weekly_schedule).map(([k,v]) => `${k}:${v.day_name}|notes:${v.notes||'none'}|workout:${v.workout_name||'none'}`) : 'NO SCHEDULE');
                 setPlan(planData);
             } catch (err) {
                 if (err.response?.status === 404) {

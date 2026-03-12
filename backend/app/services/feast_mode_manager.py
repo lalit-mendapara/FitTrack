@@ -700,10 +700,21 @@ Adjust calories, protein, carbs, fat, portion_size.
         """
         Injects the Feast Mode workout into the provided weekly_schedule dictionary 
         if the event date falls on one of the schedule days AND within the same week as reference_date.
+        If the feast day is a rest day, adjusts the workout to the previous day.
         """
+        print(f"\n[FEAST-INJECT] ========== inject_feast_workout_into_plan ==========")
+        print(f"[FEAST-INJECT] user_id={user_id}, reference_date={reference_date or date.today()}")
+
         config = self.get_active_config(user_id)
-        if not config or not config.feast_workout_data:
+        if not config:
+            print(f"[FEAST-INJECT] EXIT: No active feast config found")
             return workout_plan_schedule
+        if not config.feast_workout_data:
+            print(f"[FEAST-INJECT] EXIT: feast_workout_data is NULL — feast mode active but no workout data stored (was workout_boost disabled?)")
+            return workout_plan_schedule
+
+        print(f"[FEAST-INJECT] Config found: event={config.event_name}, event_date={config.event_date}, workout_boost={config.workout_boost_enabled}")
+        print(f"[FEAST-INJECT] feast_workout_data keys: {list(config.feast_workout_data.keys()) if isinstance(config.feast_workout_data, dict) else 'NOT A DICT'}")
 
         if not reference_date:
             reference_date = date.today()
@@ -712,10 +723,12 @@ Adjust calories, protein, carbs, fat, portion_size.
         day1_data = workout_plan_schedule.get("day1", {})
         day1_name = day1_data.get("day_name")
         if not day1_name:
+            print(f"[FEAST-INJECT] EXIT: 'day1' key not found in schedule or has no day_name. Keys: {list(workout_plan_schedule.keys())}")
             return workout_plan_schedule
             
         all_day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
         if day1_name not in all_day_names:
+            print(f"[FEAST-INJECT] EXIT: day1_name='{day1_name}' not in canonical day list")
             return workout_plan_schedule
             
         day1_idx = all_day_names.index(day1_name)
@@ -727,29 +740,107 @@ Adjust calories, protein, carbs, fat, portion_size.
             
         day1_date = reference_date + timedelta(days=diff)
         day7_date = day1_date + timedelta(days=6)
-        
-        if config.event_date < day1_date or config.event_date > day7_date:
-            # Event date is outside the currently displayed 7-day plan window
+
+        today = reference_date
+        print(f"[FEAST-INJECT] Plan window: {day1_date} ({day1_name}) → {day7_date}")
+        print(f"[FEAST-INJECT] Event date: {config.event_date}, today: {today}")
+
+        if config.event_date < today:
+            print(f"[FEAST-INJECT] EXIT: event_date {config.event_date} is in the past (today={today})")
             return workout_plan_schedule
 
         # Check if event date matches any day in the schedule
         event_day_name = config.event_date.strftime("%A") # e.g. "Friday"
+        print(f"[FEAST-INJECT] Feast day name: {event_day_name}")
+        print(f"[FEAST-INJECT] Schedule day names: {[v.get('day_name') for v in workout_plan_schedule.values()]}")
         
         updated_schedule = workout_plan_schedule.copy()
         
+        # Find the feast day and check if it's a rest day
+        feast_day_key = None
+        feast_day_is_rest = False
+        
         for key, day_data in updated_schedule.items():
             if day_data.get("day_name") == event_day_name:
-                # Injection!
-                feast_data = config.feast_workout_data
-                if isinstance(feast_data, dict):
-                    # We merge/replace to preserve structure but update content
-                    day_data["workout_name"] = feast_data.get("workout_name", "Feast Mode Workout")
-                    day_data["primary_muscle_group"] = feast_data.get("primary_muscle_group", "Full Body")
-                    day_data["focus"] = feast_data.get("focus", "Glycogen Depletion")
-                    day_data["exercises"] = feast_data.get("exercises", [])
-                    day_data["cardio_exercises"] = feast_data.get("cardio_exercises", [])
-                    day_data["is_rest"] = False
-                    day_data["notes"] = "Special workout for your upcoming Feast!"
+                feast_day_key = key
+                feast_day_is_rest = day_data.get("is_rest", False)
+                break
+        
+        # Determine target day for workout injection
+        target_day_key = None
+        adjustment_note = "Special workout for your upcoming Feast!"
+
+        # Days that the frontend always hides from the workout card grid
+        FRONTEND_HIDDEN_DAYS = {'sunday'}
+        feast_day_hidden = event_day_name.lower() in FRONTEND_HIDDEN_DAYS
+
+        print(f"[FEAST-INJECT] feast_day_key={feast_day_key}, feast_day_is_rest={feast_day_is_rest}, feast_day_hidden={feast_day_hidden}")
+
+        if feast_day_key and not feast_day_is_rest and not feast_day_hidden:
+            # Feast day IS in the schedule, has a workout, AND is visible in frontend — inject directly
+            target_day_key = feast_day_key
+            print(f"[FEAST-INJECT] Feast day has workout and is visible — injecting directly on {event_day_name} ({feast_day_key})")
+
+        # If feast day is missing from schedule, is a rest day, OR is hidden by frontend (Sunday)
+        # — find the previous visible workout day
+        if target_day_key is None:
+            print(f"[FEAST-INJECT] Feast day ({event_day_name}) not in schedule, is rest, or is hidden. Searching backwards...")
+
+            # Build a reverse map: day_name -> (key, day_data)
+            day_name_to_key = {
+                d.get("day_name"): k
+                for k, d in updated_schedule.items()
+                if d.get("day_name")
+            }
+
+            # Walk backwards from feast day in the canonical week order
+            feast_pos = all_day_names.index(event_day_name) if event_day_name in all_day_names else len(all_day_names)
+
+            print(f"[FEAST-INJECT] day_name_to_key map: {day_name_to_key}")
+            print(f"[FEAST-INJECT] Walking backwards from pos {feast_pos} in {all_day_names[:feast_pos]}")
+
+            found_previous_day = False
+            for day_name in reversed(all_day_names[:feast_pos]):
+                if day_name in day_name_to_key and day_name.lower() not in FRONTEND_HIDDEN_DAYS:
+                    candidate_key = day_name_to_key[day_name]
+                    is_rest = updated_schedule[candidate_key].get("is_rest", False)
+                    print(f"[FEAST-INJECT] Checking {day_name} ({candidate_key}): is_rest={is_rest}")
+                    if not is_rest:
+                        target_day_key = candidate_key
+                        adjustment_note = f"🎉 Tomorrow ({event_day_name}) is your Feast Day! That's why your Feast Mode workout is scheduled today."
+                        found_previous_day = True
+                        print(f"[FEAST-INJECT] Found previous workout day: {day_name} ({candidate_key})")
+                        break
+
+            # Fallback: wrap around to end of week
+            if not found_previous_day:
+                print(f"[FEAST-INJECT] No previous day found, trying wrap-around...")
+                for day_name in reversed(all_day_names[feast_pos + 1:]):
+                    if day_name in day_name_to_key and day_name.lower() not in FRONTEND_HIDDEN_DAYS:
+                        candidate_key = day_name_to_key[day_name]
+                        if not updated_schedule[candidate_key].get("is_rest", False):
+                            target_day_key = candidate_key
+                            adjustment_note = f"🎉 {event_day_name} is your Feast Day! That's why your Feast Mode workout is scheduled today."
+                            print(f"[FEAST-INJECT] Wrap-around: found {day_name} ({candidate_key})")
+                            break
+        
+        # Inject the feast workout into the target day
+        print(f"[FEAST-INJECT] Final target_day_key={target_day_key}, adjustment_note='{adjustment_note}'")
+        feast_data = config.feast_workout_data
+        if not target_day_key or not isinstance(feast_data, dict):
+            print(f"[FEAST-INJECT] EXIT: target_day_key is None or feast_data not a dict — no injection performed")
+            return updated_schedule
+        if isinstance(feast_data, dict):
+            target_day_data = updated_schedule[target_day_key]
+            
+            # We merge/replace to preserve structure but update content
+            target_day_data["workout_name"] = feast_data.get("workout_name", "Feast Mode Workout")
+            target_day_data["primary_muscle_group"] = feast_data.get("primary_muscle_group", "Full Body")
+            target_day_data["focus"] = feast_data.get("focus", "Glycogen Depletion")
+            target_day_data["exercises"] = feast_data.get("exercises", [])
+            target_day_data["cardio_exercises"] = feast_data.get("cardio_exercises", [])
+            target_day_data["is_rest"] = False
+            target_day_data["notes"] = adjustment_note
                 
         return updated_schedule
 

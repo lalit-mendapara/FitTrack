@@ -67,6 +67,13 @@ const ExerciseList = ({ dayPlan, onBack, onGenerate, onGenerateCustom, isGenerat
                         {effectiveDayPlan.workout_name}
                     </h3>
                 )}
+                {effectiveDayPlan.notes && (
+                    <div className="mt-3 bg-purple-50 border border-purple-200 rounded-lg px-3 py-2">
+                        <p className="text-sm font-semibold text-purple-700">
+                            {effectiveDayPlan.notes}
+                        </p>
+                    </div>
+                )}
                 <div className="flex items-center gap-2 mt-2">
                     {effectiveDayPlan.primary_muscle_group && (
                         <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-md border border-indigo-100 uppercase tracking-wide">
