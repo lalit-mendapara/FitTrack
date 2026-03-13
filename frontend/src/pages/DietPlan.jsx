@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import Navbar from '../components/layout/Navbar';
 import { Link } from 'react-router-dom';
 import GenerationOverlay from '../components/layout/GenerationOverlay';
@@ -15,7 +15,51 @@ import FeastModeBanner from '../components/dashboard/FeastModeBanner';
 
 // CONSTANTS REMOVED (Moved to MealCard or unused)
 
+// Meal time thresholds (in 24-hour format)
+const MEAL_TIME_THRESHOLDS = {
+  breakfast: 10, // 10 AM
+  lunch: 13,     // 1 PM
+  snacks: 17,    // 5 PM (note: plural to match database meal_id)
+  dinner: 21     // 9 PM
+};
 
+// Function to sort meals based on current time
+const sortMealsByTime = (meals) => {
+  if (!meals || meals.length === 0) return [];
+  
+  const now = new Date();
+  const currentHour = now.getHours();
+  
+  console.log(`[MEAL SORT] Current time: ${currentHour}:${now.getMinutes()}`);
+  
+  // Create a copy of meals array with priority scores
+  const mealsWithPriority = meals.map(meal => {
+    const mealType = meal.meal_id; // breakfast, lunch, snacks, dinner
+    const threshold = MEAL_TIME_THRESHOLDS[mealType] || 24;
+    
+    // Meal is "past" if current time is after its threshold
+    const isPast = currentHour >= threshold;
+    
+    // Priority calculation:
+    // - Upcoming meals: use threshold directly (lower threshold = shown first)
+    // - Past meals: add 1000 to threshold to push to end while maintaining order
+    const priority = isPast ? 1000 + threshold : threshold;
+    
+    console.log(`[MEAL SORT] ${mealType}: threshold=${threshold}h, currentHour=${currentHour}h, isPast=${isPast}, priority=${priority}`);
+    
+    return {
+      ...meal,
+      priority,
+      isPast
+    };
+  });
+  
+  // Sort by priority (ascending) - upcoming meals first, then past meals
+  const sorted = mealsWithPriority.sort((a, b) => a.priority - b.priority);
+  console.log(`[MEAL SORT] Final order:`, sorted.map(m => `${m.meal_id}(priority:${m.priority})`).join(' → '));
+  
+  return sorted;
+};
 
 const GENERATION_STEPS = [
   "Generating diet plan",
@@ -83,6 +127,9 @@ const DietPlan = ({ isEmbedded = false, onPlanGenerated }) => {
 
   // State for persistence
   const [loggedMeals, setLoggedMeals] = useState([]);
+  
+  // State to trigger re-sorting based on time
+  const [currentTime, setCurrentTime] = useState(new Date());
 
   // Fetch logs on mount
   const fetchLogs = React.useCallback(async () => {
@@ -97,6 +144,21 @@ const DietPlan = ({ isEmbedded = false, onPlanGenerated }) => {
   React.useEffect(() => {
     fetchLogs();
   }, [fetchLogs]);
+
+  // Sort meals based on current time - recalculates when time or plan changes
+  const sortedMeals = useMemo(() => {
+    if (!plan?.meal_plan) return [];
+    return sortMealsByTime(plan.meal_plan);
+  }, [plan?.meal_plan, currentTime]);
+
+  // Update current time every minute to trigger re-sorting
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60000); // Update every minute
+    
+    return () => clearInterval(interval);
+  }, []);
 
   // Handle Generate Click with Pre-Check
   const handleGenerateClick = (prompt = null) => {
@@ -515,7 +577,7 @@ const DietPlan = ({ isEmbedded = false, onPlanGenerated }) => {
                </div>
                
                <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-2 gap-6 pb-12">
-                  {plan.meal_plan?.map((meal) => (
+                  {sortedMeals.map((meal) => (
                      <MealCard 
                         key={meal.meal_id} 
                         meal={meal} 

@@ -36,3 +36,7 @@ celerybeat-schedule-shm
 celerybeat-schedule-wal
 tmp/
 celery_beat_data/
+
+
+#Profile Photos
+uploads/avatars/

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { useAuth } from '../context/AuthContext';
@@ -7,6 +7,7 @@ import api from '../api/axios';
 const Signup = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
+  const fileInputRef = useRef(null);
   
   const [formData, setFormData] = useState({
     name: '',
@@ -23,6 +24,8 @@ const Signup = () => {
   const [passwordStrength, setPasswordStrength] = useState('');
   const [dateError, setDateError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [profilePicture, setProfilePicture] = useState(null);
+  const [profilePicturePreview, setProfilePicturePreview] = useState(null);
 
   // Allowed special characters for password
   const allowedSpecialChars = '!@#$%&';
@@ -310,6 +313,38 @@ const Signup = () => {
     }
   };
 
+  const handleProfilePictureChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Please upload a valid image (JPG, PNG, GIF, or WebP)');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('File too large. Max 5MB.');
+      return;
+    }
+
+    setProfilePicture(file);
+    
+    // Create preview
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setProfilePicturePreview(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const removeProfilePicture = () => {
+    setProfilePicture(null);
+    setProfilePicturePreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
@@ -341,23 +376,37 @@ const Signup = () => {
 
     try {
       const response = await api.post('/users/signup', formData);
-
-      // Access data directly from response.data (Axios feature)
       const data = response.data;
 
-      // Successful signup
+      // If user uploaded a profile picture, upload it now
+      if (profilePicture) {
+        try {
+          const formData = new FormData();
+          formData.append('file', profilePicture);
+          const avatarRes = await api.post('/users/upload-avatar', formData, {
+            headers: { 
+              'Content-Type': 'multipart/form-data',
+              'Authorization': `Bearer ${data.access_token}`
+            },
+          });
+          // Update user object with the new profile picture URL
+          data.user.profile_picture_url = avatarRes.data.profile_picture_url;
+        } catch (avatarErr) {
+          console.error('Avatar upload failed during signup', avatarErr);
+          // Don't fail signup if avatar upload fails, just log it
+          toast.warning('Profile created but photo upload failed. You can upload it later from your profile.');
+        }
+      }
+
       toast.success('Signup Successful! Welcome to FitTrack.');
-      login(data.user, data.access_token); // Login the user with the returned user object and token
+      login(data.user, data.access_token);
       
-      // Delay redirect by 2 seconds
       setTimeout(() => {
-        navigate('/dashboard'); // Redirect to Dashboard
+        navigate('/dashboard');
       }, 2000);
       
     } catch (err) {
-      // Axios stores the response data in err.response.data
       const errorMessage = err.response?.data?.detail || 'Signup failed. Please try again.';
-      // setError(errorMessage);
       toast.error(errorMessage);
     } finally {
       setIsLoading(false);
@@ -576,6 +625,67 @@ const Signup = () => {
                 </select>
               </div>
             </div>
+          </div>
+
+          {/* Profile Picture Upload (Optional) */}
+          <div className="border-t border-white/10 pt-6">
+            <label className="block text-sm font-medium text-gray-200 mb-3">
+              Profile Picture <span className="text-gray-400 font-normal">(Optional)</span>
+            </label>
+            
+            {profilePicturePreview ? (
+              <div className="flex items-center gap-4">
+                <img
+                  src={profilePicturePreview}
+                  alt="Profile preview"
+                  className="w-20 h-20 rounded-full object-cover border-2 border-indigo-400"
+                />
+                <div className="flex-1">
+                  <p className="text-sm text-gray-300 mb-2">Photo selected</p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-3 py-1.5 text-xs bg-white/10 text-white rounded-lg hover:bg-white/20 transition-colors"
+                    >
+                      Change
+                    </button>
+                    <button
+                      type="button"
+                      onClick={removeProfilePicture}
+                      className="px-3 py-1.5 text-xs bg-red-500/20 text-red-300 rounded-lg hover:bg-red-500/30 transition-colors"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full px-4 py-3 border-2 border-dashed border-gray-300/30 rounded-lg hover:border-indigo-400/50 transition-all bg-white/5 hover:bg-white/10 group"
+              >
+                <div className="flex flex-col items-center gap-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8 text-gray-400 group-hover:text-indigo-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  <div className="text-sm text-gray-300">
+                    <span className="text-indigo-300 font-medium">Click to upload</span> or drag and drop
+                  </div>
+                  <p className="text-xs text-gray-400">PNG, JPG, GIF, WebP up to 5MB</p>
+                </div>
+              </button>
+            )}
+            
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/gif,image/webp"
+              onChange={handleProfilePictureChange}
+              className="hidden"
+            />
           </div>
 
           <div>

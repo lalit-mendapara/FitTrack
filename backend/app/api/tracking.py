@@ -984,28 +984,31 @@ def get_workout_calendar(
     if not plan_day_order:
         plan_day_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
     
-    # Check for Active Feast Config (for dynamic injection)
-    from app.models.feast_config import FeastConfig
-    active_feast = db.query(FeastConfig).filter(
-        FeastConfig.user_id == current_user.id,
-        FeastConfig.is_active == True,
-        FeastConfig.event_date >= target_week_start,
-        FeastConfig.event_date <= target_week_end
-    ).first()
+    # FEAST MODE INJECTION - Use the proper injection method that handles day-before scheduling
+    final_schedule = plan.weekly_schedule
+    try:
+        from app.services.feast_mode_manager import FeastModeManager
+        feast_manager = FeastModeManager(db)
+        final_schedule = feast_manager.inject_feast_workout_into_plan(current_user.id, final_schedule, reference_date=target_week_start)
+        
+        # Rebuild schedule_map with the injected feast workout
+        schedule_map = {}
+        if isinstance(final_schedule, dict):
+            sorted_keys = sorted(final_schedule.keys(), key=lambda k: int(k.replace('day', '')) if k.startswith('day') else 999)
+            for k in sorted_keys:
+                v = final_schedule[k]
+                if isinstance(v, dict) and "day_name" in v:
+                    schedule_map[v["day_name"]] = v
+    except Exception as e:
+        print(f"Workout Calendar: Feast Injection Failed: {e}")
     
     current_d = target_week_start
     for i in range(7):
         day_name = plan_day_order[i] if i < len(plan_day_order) else ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"][i]
         date_str = current_d.strftime("%Y-%m-%d")
         
-        # Get Template
+        # Get Template (now with feast workout properly injected on the correct day)
         template = schedule_map.get(day_name, {})
-        
-        # FEAST MODE INJECTION
-        if active_feast and active_feast.event_date == current_d and active_feast.feast_workout_data:
-            # Override this day with the feast workout
-            if isinstance(active_feast.feast_workout_data, dict):
-                template = active_feast.feast_workout_data
         
         # Get Logs for this specific date
         logged_exercises_set = logs_by_date.get(current_d, set())

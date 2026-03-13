@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { toast } from 'react-toastify';
 import { Link } from 'react-router-dom';
 import Navbar from '../components/layout/Navbar';
@@ -7,7 +7,8 @@ import api from '../api/axios';
 import UnifiedProfileForm from '../components/profile/UnifiedProfileForm';
 
 const Profile = ({ isEmbedded = false, onProfileComplete, onViewDietPlan, onUpdateStart, onUpdateEnd }) => {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
+  const fileInputRef = useRef(null);
   const [profileData, setProfileData] = useState(null);
   const [workoutData, setWorkoutData] = useState(null);
   const [showForm, setShowForm] = useState(false);
@@ -45,6 +46,37 @@ const Profile = ({ isEmbedded = false, onProfileComplete, onViewDietPlan, onUpda
     fetchProfile();
   }, []);
 
+  const handleAvatarUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Please upload a valid image (JPG, PNG, GIF, or WebP)');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('File too large. Max 5MB.');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await api.post('/users/upload-avatar', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      updateUser({ profile_picture_url: res.data.profile_picture_url });
+      toast.success('Profile picture updated!');
+    } catch (err) {
+      console.error('Avatar upload failed', err);
+      toast.error(err.response?.data?.detail || 'Failed to upload photo');
+    }
+    // Reset input so same file can be re-selected
+    e.target.value = '';
+  };
+
   const handleFormSuccess = (type) => {
     fetchProfile(); 
     if (onProfileComplete) {
@@ -60,12 +92,37 @@ const Profile = ({ isEmbedded = false, onProfileComplete, onViewDietPlan, onUpda
       <div className={`relative ${isEmbedded ? 'pt-10 pb-10 rounded-3xl mx-6 ' : 'pt-32 pb-20'} bg-linear-to-r from-indigo-700 to-purple-800 text-white ${isEmbedded ? '' : 'mt-16'}`}>
         <div className={`container mx-auto ${isEmbedded ? 'px-4' : 'px-6'}`}>
           <div className="flex flex-col md:flex-row items-center gap-8">
-            <div className="relative">
+            <div className="relative group">
               <div className="w-32 h-32 rounded-full bg-white p-1 shadow-2xl">
-                <div className="w-full h-full rounded-full bg-indigo-100 flex items-center justify-center text-5xl font-bold text-indigo-600">
-                  {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
-                </div>
+                {user?.profile_picture_url ? (
+                  <img
+                    src={user.profile_picture_url}
+                    alt={user.name}
+                    className="w-full h-full rounded-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full rounded-full bg-indigo-100 flex items-center justify-center text-5xl font-bold text-indigo-600">
+                    {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
+                  </div>
+                )}
               </div>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="absolute inset-0 w-32 h-32 rounded-full bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                title="Change photo"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/gif,image/webp"
+                onChange={handleAvatarUpload}
+                className="hidden"
+              />
             </div>
             <div className="text-center md:text-left">
               <h1 className="text-4xl font-bold mb-2">{user?.name}</h1>

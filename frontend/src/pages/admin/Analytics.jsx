@@ -219,7 +219,10 @@ const Analytics = () => {
               <BarChart data={planGenerationData}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="name" />
-                <YAxis />
+                <YAxis 
+                  domain={[0, 200]}
+                  ticks={[0, 50, 100, 150, 200]}
+                />
                 <Tooltip />
                 <Legend />
                 <Bar dataKey="total" fill="#3b82f6" name="Total Plans" />

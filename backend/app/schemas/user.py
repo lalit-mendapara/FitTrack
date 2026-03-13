@@ -37,6 +37,7 @@ class UserResponse(BaseModel):
     dob: date
     gender: str
     age: int
+    profile_picture_url: Optional[str] = None
 
     class Config:
         from_attributes = True  # Changed from orm_mode in Pydantic v2

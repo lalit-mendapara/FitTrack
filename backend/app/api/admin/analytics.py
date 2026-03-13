@@ -47,8 +47,8 @@ async def get_dashboard_stats(
             FeastConfig.is_active == True
         ).scalar() or 0
         
-        # Count meal plans
-        total_meal_plans = db.query(func.count(MealPlan.id)).scalar() or 0
+        # Count meal plans - distinct users with meal plans
+        total_meal_plans = db.query(func.count(func.distinct(MealPlan.user_profile_id))).scalar() or 0
         
         # Count workout plans
         total_workout_plans = db.query(func.count(WorkoutPlan.id)).scalar() or 0
@@ -160,14 +160,15 @@ async def get_plan_generation_stats(
 ):
     """Get plan generation statistics with REAL last 30 days data"""
     try:
-        total_meal_plans = db.query(func.count(MealPlan.id)).scalar() or 0
+        # Count distinct users with meal plans (not total meal entries)
+        total_meal_plans = db.query(func.count(func.distinct(MealPlan.user_profile_id))).scalar() or 0
         total_workout_plans = db.query(func.count(WorkoutPlan.id)).scalar() or 0
         
         # Calculate date 30 days ago
         thirty_days_ago = datetime.now() - timedelta(days=30)
         
-        # Count plans created in last 30 days using created_at field
-        meal_plans_last_30_days = db.query(func.count(MealPlan.id)).filter(
+        # Count distinct users who got meal plans in last 30 days
+        meal_plans_last_30_days = db.query(func.count(func.distinct(MealPlan.user_profile_id))).filter(
             MealPlan.created_at >= thirty_days_ago
         ).scalar() or 0
         

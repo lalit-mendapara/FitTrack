@@ -14,10 +14,12 @@ import { useAuth } from '../context/AuthContext';
 import feastLogo from '../images/Feast-logo98_png586.png';
 
 import { useDietPlan } from '../hooks/useDietPlan';
+import { useWorkoutPlan } from '../hooks/useWorkoutPlan';
 
 const AICoach = () => {
     const { user } = useAuth();
     const { plan } = useDietPlan(); // Access current diet plan
+    const { plan: workoutPlan } = useWorkoutPlan();
     const navigate = useNavigate();
     const firstName = user?.name ? user.name.split(' ')[0] : 'there';
     
@@ -653,6 +655,62 @@ const AICoach = () => {
         });
     };
 
+    const handleTodaysWorkout = async () => {
+        if (!workoutPlan?.weekly_schedule) {
+            handleSend(null, "What is my workout for today?");
+            return;
+        }
+
+        // Calculate today's workout day
+        const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        const today = new Date();
+        const todayName = days[today.getDay()];
+
+        // Find which day in the schedule matches today
+        const scheduleEntries = Object.entries(workoutPlan.weekly_schedule);
+        const todayEntry = scheduleEntries.find(([_, dayData]) => 
+            dayData.day_name?.toLowerCase() === todayName.toLowerCase()
+        );
+
+        if (!todayEntry) {
+            handleSend(null, "What is my workout for today?");
+            return;
+        }
+
+        const [dayKey, dayData] = todayEntry;
+        const workoutType = dayData.workout_name || dayData.focus || 'Workout';
+        const exerciseCount = dayData.exercises?.length || 0;
+
+        // Create link to today's exercises
+        const workoutLink = `/dashboard?tab=workout-plan&day=${dayKey}`;
+
+        // Add user message
+        const userText = "What is my workout for today?";
+        setMessages(prev => [...prev, { type: 'user', text: userText, timestamp: new Date().toISOString() }]);
+        await addChatMessage(sessionId, 'user', userText);
+
+        // Add AI response with link
+        setTimeout(async () => {
+            // Build exercise list
+            const exerciseList = dayData.exercises?.slice(0, 3).map(ex => {
+                const exerciseName = ex.exercise || ex.name || 'Exercise';
+                const sets = ex.sets ? ` – ${ex.sets}×${ex.reps || ex.rep_range || ''}` : '';
+                return `- ${exerciseName}${sets}`;
+            }).join('\n') || '- No exercises listed';
+
+            const aiText = `Hey ${firstName}! Since today is **${todayName}**, you're on a **${workoutType}** day. Here's the full lineup:\n\n${exerciseList}${exerciseCount > 3 ? `\n- ...and ${exerciseCount - 3} more exercises` : ''}\n\n[**View Today's Full Workout →**](${workoutLink})`;
+            
+            const savedMsg = await addChatMessage(sessionId, 'assistant', aiText);
+            
+            setMessages(prev => [...prev, { 
+                id: savedMsg?.id,
+                type: 'ai', 
+                text: aiText,
+                timestamp: new Date().toISOString()
+            }]);
+        }, 500);
+    };
+
     return (
         <div className="h-[calc(100vh-8rem)] md:h-[calc(100vh-5rem)] flex flex-col bg-white rounded-2xl shadow-xl overflow-hidden">
             {/* Header */}
@@ -822,17 +880,21 @@ const AICoach = () => {
                     <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-4 bg-linear-to-b from-gray-50 to-white">
                         {messages.map((msg, idx) => (
                             <div key={idx} className={`flex gap-3 ${msg.type === 'user' ? 'flex-row-reverse' : ''}`}>
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
-                                    msg.type === 'ai' 
-                                        ? 'bg-linear-to-br from-indigo-500 to-purple-600' 
-                                        : 'bg-linear-to-br from-blue-500 to-cyan-600'
-                                }`}>
-                                    {msg.type === 'ai' ? (
+                                {msg.type === 'ai' ? (
+                                    <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 bg-linear-to-br from-indigo-500 to-purple-600">
                                         <Bot className="w-5 h-5 text-white" />
-                                    ) : (
-                                        <User className="w-5 h-5 text-white" />
-                                    )}
-                                </div>
+                                    </div>
+                                ) : user?.profile_picture_url ? (
+                                    <img
+                                        src={user.profile_picture_url}
+                                        alt={user.name}
+                                        className="w-8 h-8 rounded-full object-cover shrink-0"
+                                    />
+                                ) : (
+                                    <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 bg-linear-to-br from-blue-500 to-cyan-600 text-white text-xs font-bold">
+                                        {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
+                                    </div>
+                                )}
                                 <div className={`flex-1 max-w-3xl ${msg.type === 'user' ? 'text-right' : ''}`}>
                                     <div className={`inline-block px-4 py-3 rounded-2xl shadow-sm ${
                                         msg.type === 'ai'
@@ -950,7 +1012,7 @@ const AICoach = () => {
                             📅 What should I eat?
                          </button>
                          <button 
-                            onClick={() => handleSend(null, "What is my workout for today?")}
+                            onClick={handleTodaysWorkout}
                             className="whitespace-nowrap px-3 py-1.5 bg-orange-50 text-orange-700 text-xs font-semibold rounded-full hover:bg-orange-100 transition-colors border border-orange-100 shrink-0"
                          >
                             💪 Today's Workout

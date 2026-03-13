@@ -15,6 +15,7 @@ class User(Base):
     age = Column(Integer)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    profile_picture_url = Column(String(500), nullable=True)
 
     @validates('dob')
     def update_age(self, key, dob_value):
