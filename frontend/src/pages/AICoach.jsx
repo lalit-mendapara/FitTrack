@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Send, Bot, User, Loader2, History, Plus, MessageSquare, Copy, Check, MoreVertical, Pencil, Trash2, X } from 'lucide-react';
+import { Send, Bot, User, Loader2, History, Plus, MessageSquare, Copy, Check, MoreVertical, Pencil, Trash2, X, Drumstick, Utensils, Dumbbell, BatteryLow, TrendingUp, Target, PanelRight } from 'lucide-react';
 import { chatWithCoach, getChatHistory, getChatSessions, deleteSession, renameSession, addChatMessage, updateChatMessage, deleteChatMessage } from '../api/chat';
 import { feastModeService } from '../api/feastModeService';
 import FeastSetupCard from '../components/chat/FeastSetupCard';
 import FeastProposalCard from '../components/common/FeastProposalCard';
 import FeastDeactivePreviewCard from '../components/chat/FeastDeactivePreviewCard';
+import FeastModePanel from '../components/chat/FeastModePanel';
 import { toast } from 'react-toastify';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -34,12 +35,17 @@ const AICoach = () => {
     // Feast Mode State
     const [feastStatus, setFeastStatus] = useState(null); // { is_active: boolean, ... }
     const [feastLoading, setFeastLoading] = useState(false);
+    const [feastActivating, setFeastActivating] = useState(false);
+    const [activationProposal, setActivationProposal] = useState(null);
 
     // History State
     const [showHistory, setShowHistory] = useState(false);
     const [sessions, setSessions] = useState([]);
     const [historyLoading, setHistoryLoading] = useState(false);
     const [copiedIndex, setCopiedIndex] = useState(null);
+
+    // Right Panel Toggle (mobile)
+    const [showRightPanel, setShowRightPanel] = useState(false);
 
     // Menu & Edit State
     const [activeMenu, setActiveMenu] = useState(null);
@@ -313,6 +319,12 @@ const AICoach = () => {
             // Remove the setup card entirely from the chat view locally
             setMessages(prev => prev.filter(msg => msg.customContent?.type !== 'feast_setup'));
 
+            // Store real proposal data for the right panel
+            setActivationProposal(proposalData);
+
+            // Trigger right panel activation animation
+            setFeastActivating(true);
+
             // Refresh Status
             await checkFeastStatus();
             
@@ -321,6 +333,19 @@ const AICoach = () => {
         } finally {
             setFeastLoading(false);
         }
+    };
+
+    const handleFeastActivationComplete = async () => {
+        // Send final confirmation message in chat using real proposal data
+        const banked = activationProposal?.total_banked ?? activationProposal?.daily_deduction * activationProposal?.days_remaining ?? 750;
+        const confirmText = `🎉 **Feast Mode is now active!** Your ${banked} kcal bank is confirmed. On party day, forget calorie counting — just enjoy! I'll remind you with a meal plan the morning of. You've got this! 💪`;
+        const savedMsg = await addChatMessage(sessionId, 'assistant', confirmText);
+        setMessages(prev => [...prev, {
+            id: savedMsg?.id,
+            type: 'ai',
+            text: confirmText,
+            timestamp: new Date().toISOString()
+        }]);
     };
 
     const handleCancelFeast = async () => {
@@ -359,6 +384,9 @@ const AICoach = () => {
             }]);
             
             await checkFeastStatus();
+            // Reset right panel to default (feast ended)
+            setFeastActivating(false);
+            setActivationProposal(null);
         } catch (error) {
             toast.error("Failed to cancel");
         } finally {
@@ -712,45 +740,54 @@ const AICoach = () => {
     };
 
     return (
-        <div className="h-[calc(100vh-8rem)] md:h-[calc(100vh-5rem)] flex flex-col bg-white rounded-2xl shadow-xl overflow-hidden">
-            {/* Header */}
-            <div className="bg-linear-to-r from-indigo-600 to-purple-600 px-6 py-4 flex items-center justify-between shadow-lg shrink-0">
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm">
-                        <Bot className="w-6 h-6 text-white" />
-                    </div>
-                    <div>
-                        <h2 className="text-white font-bold text-lg">AI Fitness Coach</h2>
-                        <p className="text-white/80 text-xs">Here to help you achieve your goals</p>
+        <div className="h-[calc(100vh-8rem)] md:h-[calc(100vh-5rem)] flex flex-col overflow-hidden" style={{ background: '#f0f2f5' }}>
+            {/* ── HEADER ── */}
+            <div className="aicoach-header shrink-0 flex items-center gap-3 z-10" style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', boxShadow: '0 2px 20px rgba(99,102,241,0.3)' }}>
+                <div className="aicoach-bot-avatar flex items-center justify-center shrink-0" style={{ background: 'rgba(255,255,255,0.2)', borderRadius: 12, fontSize: 20 }}>
+                    🤖
+                </div>
+                <div className="flex-1 min-w-0">
+                    <div className="aicoach-header-title" style={{ color: 'white', fontWeight: 700 }}>AI Fitness Coach</div>
+                    <div className="flex items-center gap-1.5 aicoach-header-sub" style={{ color: 'rgba(255,255,255,0.7)' }}>
+                        <div className="feast-status-dot shrink-0" />
+                        <span className="truncate">Online · Here to help you achieve your goals</span>
                     </div>
                 </div>
-                <div className="flex items-center gap-2">
-                    <button
-                        onClick={handleShowHistory}
-                        className="p-2 hover:bg-white/20 rounded-lg transition-all"
-                        title="View History"
-                    >
-                        <History className="w-5 h-5 text-white" />
+                <div className="flex items-center gap-3">
+                    <button onClick={handleShowHistory} title="History" className="cursor-pointer shrink-0" style={{ color: 'rgba(255,255,255,0.75)', background: 'none', border: 'none' }}>
+                        <History className="w-5 h-5" />
+                    </button>
+                    <button onClick={handleNewChat} title="New chat" className="cursor-pointer shrink-0" style={{ color: 'rgba(255,255,255,0.75)', background: 'none', border: 'none' }}>
+                        <Plus className="w-5 h-5" />
                     </button>
                     <button
-                        onClick={handleNewChat}
-                        className="p-2 hover:bg-white/20 rounded-lg transition-all"
-                        title="New Chat"
+                        onClick={() => setShowRightPanel(prev => !prev)}
+                        title="Toggle Feast Panel"
+                        className="cursor-pointer lg:hidden shrink-0"
+                        style={{ color: 'rgba(255,255,255,0.75)', background: 'none', border: 'none', position: 'relative' }}
                     >
-                        <Plus className="w-5 h-5 text-white" />
+                        <PanelRight className="w-5 h-5" />
+                        {feastStatus && (
+                            <span style={{ position: 'absolute', top: -2, right: -2, width: 8, height: 8, borderRadius: '50%', background: '#4ade80', border: '2px solid #6366f1' }} />
+                        )}
                     </button>
                 </div>
             </div>
 
-            <div className="flex-1 flex overflow-hidden">
-                {/* History Sidebar */}
+            {/* ── MAIN BODY ── */}
+            <div className="flex flex-1 overflow-hidden">
+
+                {/* History Sidebar (overlay) */}
                 {showHistory && (
-                    <div className="w-80 border-r border-gray-200 bg-gray-50 flex flex-col">
-                        <div className="p-4 border-b border-gray-200 bg-white">
-                            <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                    <div className="w-72 border-r border-gray-200 bg-gray-50 flex flex-col shrink-0 z-20">
+                        <div className="p-4 border-b border-gray-200 bg-white flex items-center justify-between">
+                            <h3 className="font-semibold text-gray-900 flex items-center gap-2 text-sm">
                                 <MessageSquare className="w-4 h-4" />
                                 Chat History
                             </h3>
+                            <button onClick={() => setShowHistory(false)} className="p-1 hover:bg-gray-100 rounded">
+                                <X size={16} className="text-gray-400" />
+                            </button>
                         </div>
                         <div className="flex-1 overflow-y-auto p-3 space-y-2">
                             {historyLoading ? (
@@ -769,25 +806,13 @@ const AICoach = () => {
                                                 : 'bg-white hover:bg-gray-100 border border-gray-200'
                                         }`}
                                     >
-                                        {/* Delete Confirmation */}
                                         {deleteConfirm === session.session_id ? (
                                             <div className="flex items-center gap-2">
                                                 <span className="text-red-600 text-xs flex-1">Delete this chat?</span>
-                                                <button 
-                                                    onClick={() => handleDeleteSession(session.session_id)}
-                                                    className="px-2 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600"
-                                                >
-                                                    Yes
-                                                </button>
-                                                <button 
-                                                    onClick={() => setDeleteConfirm(null)}
-                                                    className="px-2 py-1 bg-gray-200 text-gray-700 text-xs rounded hover:bg-gray-300"
-                                                >
-                                                    No
-                                                </button>
+                                                <button onClick={() => handleDeleteSession(session.session_id)} className="px-2 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600">Yes</button>
+                                                <button onClick={() => setDeleteConfirm(null)} className="px-2 py-1 bg-gray-200 text-gray-700 text-xs rounded hover:bg-gray-300">No</button>
                                             </div>
                                         ) : editingSession === session.session_id ? (
-                                            /* Editing Mode */
                                             <div className="flex items-center gap-2">
                                                 <input
                                                     type="text"
@@ -800,66 +825,28 @@ const AICoach = () => {
                                                     className="flex-1 px-2 py-1 text-sm border border-indigo-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
                                                     autoFocus
                                                 />
-                                                <button 
-                                                    onClick={() => handleRenameSession(session.session_id)}
-                                                    className="p-1 text-indigo-600 hover:bg-indigo-100 rounded"
-                                                >
-                                                    <Check size={16} />
-                                                </button>
-                                                <button 
-                                                    onClick={() => { setEditingSession(null); setEditTitle(''); }}
-                                                    className="p-1 text-gray-400 hover:bg-gray-100 rounded"
-                                                >
-                                                    <X size={16} />
-                                                </button>
+                                                <button onClick={() => handleRenameSession(session.session_id)} className="p-1 text-indigo-600 hover:bg-indigo-100 rounded"><Check size={16} /></button>
+                                                <button onClick={() => { setEditingSession(null); setEditTitle(''); }} className="p-1 text-gray-400 hover:bg-gray-100 rounded"><X size={16} /></button>
                                             </div>
                                         ) : (
-                                            /* Normal Mode */
                                             <div className="flex items-start gap-2">
-                                                <button 
-                                                    onClick={() => handleSwitchSession(session.session_id)}
-                                                    className="flex-1 text-left"
-                                                >
-                                                    <p className="text-xs text-gray-500 mb-1">
-                                                        {new Date(session.last_active).toLocaleDateString()}
-                                                    </p>
-                                                    <p className="text-sm font-medium text-gray-900 truncate">
-                                                        {session.title || `Session ${session.session_id.slice(0, 8)}...`}
-                                                    </p>
+                                                <button onClick={() => handleSwitchSession(session.session_id)} className="flex-1 text-left">
+                                                    <p className="text-xs text-gray-500 mb-1">{new Date(session.last_active).toLocaleDateString()}</p>
+                                                    <p className="text-sm font-medium text-gray-900 truncate">{session.title || `Session ${session.session_id.slice(0, 8)}...`}</p>
                                                 </button>
-                                                
-                                                {/* 3-Dot Menu */}
                                                 <div className="relative" ref={activeMenu === session.session_id ? menuRef : null}>
                                                     <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setActiveMenu(activeMenu === session.session_id ? null : session.session_id);
-                                                        }}
+                                                        onClick={(e) => { e.stopPropagation(); setActiveMenu(activeMenu === session.session_id ? null : session.session_id); }}
                                                         className="p-1.5 rounded-full hover:bg-gray-200 text-gray-400 hover:text-gray-600 transition-colors"
                                                     >
                                                         <MoreVertical size={16} />
                                                     </button>
-                                                    
-                                                    {/* Dropdown Menu */}
                                                     {activeMenu === session.session_id && (
                                                         <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-30 min-w-30">
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    startEditing(session);
-                                                                }}
-                                                                className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-gray-50 text-gray-700"
-                                                            >
+                                                            <button onClick={(e) => { e.stopPropagation(); startEditing(session); }} className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-gray-50 text-gray-700">
                                                                 <Pencil size={14} /> Rename
                                                             </button>
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    setDeleteConfirm(session.session_id);
-                                                                    setActiveMenu(null);
-                                                                }}
-                                                                className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-red-50 text-red-600"
-                                                            >
+                                                            <button onClick={(e) => { e.stopPropagation(); setDeleteConfirm(session.session_id); setActiveMenu(null); }} className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-red-50 text-red-600">
                                                                 <Trash2 size={14} /> Delete
                                                             </button>
                                                         </div>
@@ -874,50 +861,80 @@ const AICoach = () => {
                     </div>
                 )}
 
-                {/* Chat Area */}
-                <div className="flex-1 flex flex-col">
+                {/* ══ CHAT AREA (70% on desktop with panel, 100% on mobile) ══ */}
+                <div className="flex flex-col bg-white flex-1 min-w-0 lg:w-[70%] overflow-hidden" style={{ borderRight: '1px solid #e8eaed' }}>
                     {/* Messages */}
-                    <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-4 bg-linear-to-b from-gray-50 to-white">
+                    <div
+                        ref={scrollRef}
+                        className="aicoach-messages flex-1 overflow-y-auto overflow-x-hidden flex flex-col gap-4"
+                    >
                         {messages.map((msg, idx) => (
-                            <div key={idx} className={`flex gap-3 ${msg.type === 'user' ? 'flex-row-reverse' : ''}`}>
+                            <div
+                                key={idx}
+                                className={`aicoach-msg flex gap-2.5 feast-slide-up ${msg.type === 'user' ? 'self-end flex-row-reverse' : 'self-start'}`}
+                            >
+                                {/* Avatar */}
                                 {msg.type === 'ai' ? (
-                                    <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 bg-linear-to-br from-indigo-500 to-purple-600">
-                                        <Bot className="w-5 h-5 text-white" />
+                                    <div
+                                        className="shrink-0 flex items-center justify-center"
+                                        style={{
+                                            width: 32, height: 32, borderRadius: 10,
+                                            background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                                            fontSize: 15,
+                                        }}
+                                    >
+                                        🤖
                                     </div>
                                 ) : user?.profile_picture_url ? (
-                                    <img
-                                        src={user.profile_picture_url}
-                                        alt={user.name}
-                                        className="w-8 h-8 rounded-full object-cover shrink-0"
-                                    />
+                                    <img src={user.profile_picture_url} alt={user.name} className="shrink-0 object-cover" style={{ width: 32, height: 32, borderRadius: 10 }} />
                                 ) : (
-                                    <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 bg-linear-to-br from-blue-500 to-cyan-600 text-white text-xs font-bold">
-                                        {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
+                                    <div
+                                        className="shrink-0 flex items-center justify-center"
+                                        style={{ width: 32, height: 32, borderRadius: 10, background: '#f3f4f6', fontSize: 15 }}
+                                    >
+                                        👤
                                     </div>
                                 )}
-                                <div className={`flex-1 max-w-3xl ${msg.type === 'user' ? 'text-right' : ''}`}>
-                                    <div className={`inline-block px-4 py-3 rounded-2xl shadow-sm ${
-                                        msg.type === 'ai'
-                                            ? 'bg-white border border-gray-200 text-gray-800'
-                                            : 'bg-linear-to-r from-blue-600 to-cyan-600 text-white'
-                                    }`}>
+
+                                {/* Bubble */}
+                                <div className="flex flex-col min-w-0">
+                                    <div
+                                        className="aicoach-bubble"
+                                        style={{
+                                            borderRadius: 16,
+                                            fontSize: 13,
+                                            lineHeight: 1.55,
+                                            wordBreak: 'break-word',
+                                            overflowWrap: 'break-word',
+                                            ...(msg.type === 'ai'
+                                                ? {
+                                                    background: '#f7f8fc',
+                                                    border: '1px solid #eaecf0',
+                                                    color: '#1f2937',
+                                                    borderTopLeftRadius: 4,
+                                                  }
+                                                : {
+                                                    background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                                                    color: 'white',
+                                                    borderTopRightRadius: 4,
+                                                  }),
+                                        }}
+                                    >
                                         {msg.customContent ? (
                                             <>
-                                                <p className="mb-3">{msg.text}</p>
+                                                <p className="mb-3" style={{ fontSize: 13 }}>{msg.text}</p>
                                                 {msg.customContent.type === 'feast_setup' && (
-                                                    <FeastSetupCard 
-                                                        onSubmit={handleFeastProposal} 
-                                                        onCancel={cancelInteraction} 
+                                                    <FeastSetupCard
+                                                        onSubmit={handleFeastProposal}
+                                                        onCancel={cancelInteraction}
                                                         dietPlan={plan}
                                                         isStatic={msg.customContent.isStatic}
                                                         staticData={msg.customContent.selectedData}
                                                         initialData={msg.customContent.initialData}
                                                     />
                                                 )}
-
-
                                                 {msg.customContent.type === 'feast_proposal' && (
-                                                    <FeastProposalCard 
+                                                    <FeastProposalCard
                                                         proposal={msg.customContent.data}
                                                         onConfirm={handleActivateFeast}
                                                         onCancel={cancelInteraction}
@@ -938,108 +955,96 @@ const AICoach = () => {
                                             </>
                                         ) : msg.type === 'ai' ? (
                                             <>
-                                                <div className="prose prose-sm max-w-none prose-headings:text-gray-900 prose-p:text-gray-800 prose-li:text-gray-800 prose-strong:text-gray-900 wrap-break-word overflow-x-auto">
+                                                <div className="aicoach-prose prose prose-sm max-w-none prose-headings:text-gray-900 prose-p:text-gray-800 prose-li:text-gray-800 prose-strong:text-gray-900">
                                                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
                                                         {msg.text}
                                                     </ReactMarkdown>
                                                 </div>
-                                                {/* AI Message Footer: Copy & Time */}
-                                                <div className="mt-2 flex items-center justify-end gap-2 border-t border-gray-100 pt-1">
-                                                     <button 
+                                                <div className="mt-2 flex items-center justify-end gap-2 pt-1" style={{ borderTop: '1px solid #eaecf0' }}>
+                                                    <button
                                                         onClick={() => handleCopy(msg.text, idx)}
                                                         className="p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600 transition-colors"
                                                         title="Copy response"
                                                     >
-                                                        {copiedIndex === idx ? (
-                                                            <Check className="w-3.5 h-3.5 text-green-500" />
-                                                        ) : (
-                                                            <Copy className="w-3.5 h-3.5" />
-                                                        )}
+                                                        {copiedIndex === idx ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
                                                     </button>
-                                                    <span className="text-[10px] text-gray-400 font-medium">
-                                                        {formatTime(msg.timestamp)}
-                                                    </span>
+                                                    <span style={{ fontSize: 10, color: '#9ca3af', fontWeight: 500 }}>{formatTime(msg.timestamp)}</span>
                                                 </div>
                                             </>
                                         ) : (
-                                            <div className="text-sm whitespace-pre-wrap flex flex-col items-end">
-                                                <span>{msg.text}</span>
-                                                {/* User Message Time */}
-                                                <span className="text-[10px] text-blue-100 mt-1">
-                                                    {formatTime(msg.timestamp)}
-                                                </span>
+                                            <div className="flex flex-col items-end" style={{ fontSize: 13 }}>
+                                                <span className="whitespace-pre-wrap">{msg.text}</span>
+                                                <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.6)', marginTop: 4 }}>{formatTime(msg.timestamp)}</span>
                                             </div>
                                         )}
                                     </div>
                                 </div>
                             </div>
                         ))}
+
+                        {/* Typing indicator */}
                         {isLoading && (
-                            <div className="flex gap-3">
-                                <div className="w-8 h-8 rounded-full bg-linear-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
-                                    <Bot className="w-5 h-5 text-white" />
+                            <div className="flex gap-2.5 self-start feast-slide-up" style={{ maxWidth: '85%' }}>
+                                <div
+                                    className="shrink-0 flex items-center justify-center"
+                                    style={{ width: 32, height: 32, borderRadius: 10, background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', fontSize: 15 }}
+                                >
+                                    🤖
                                 </div>
-                                <div className="bg-white border border-gray-200 px-4 py-3 rounded-2xl shadow-sm">
-                                    <Loader2 className="w-5 h-5 animate-spin text-indigo-600" />
+                                <div className="feast-typing-bubble">
+                                    <span /><span /><span />
                                 </div>
                             </div>
                         )}
                     </div>
-                    
-                    {/* Quick Actions / FAQ Chips */}
-                    <div className="px-6 py-2 flex gap-2 overflow-x-auto no-scrollbar bg-white border-t border-gray-100">
-                         {feastStatus ? (
-                             <button 
-                                onClick={startFeastDeactivation}
-                                className="whitespace-nowrap px-3 py-1.5 bg-red-50 text-red-700 text-xs font-semibold rounded-full hover:bg-red-100 transition-colors border border-red-100 inline-flex items-center gap-1.5 shrink-0"
-                             >
-                                <img src={feastLogo} alt="Feast Mode" className="h-4 w-4 object-contain" />
-                                Cancel Feast Mode
-                             </button>
-                         ) : (
-                             <button 
+
+                    {/* Quick Replies */}
+                    <div className="aicoach-quick-replies flex gap-1.5 overflow-x-auto shrink-0" style={{ borderTop: '1px solid #f0f2f5' }}>
+                        {feastStatus ? (
+                            <div className="shrink-0 flex items-center gap-1.5" style={{ whiteSpace: 'nowrap', padding: '7px 13px', borderRadius: 20, border: '1px solid #22c55e', background: 'rgba(34,197,94,0.1)', fontSize: 11, color: '#16a34a', fontFamily: 'inherit', fontWeight: 600 }}>
+                                <Drumstick className="w-3.5 h-3.5" />
+                                Feast Mode Active
+                            </div>
+                        ) : (
+                            <button
                                 onClick={startFeastActivation}
-                                className="whitespace-nowrap px-3 py-1.5 bg-purple-50 text-purple-700 text-xs font-semibold rounded-full hover:bg-purple-100 transition-colors border border-purple-100 inline-flex items-center gap-1.5 shrink-0"
-                             >
-                                <img src={feastLogo} alt="Feast Mode" className="h-4 w-4 object-contain" />
+                                className="shrink-0 cursor-pointer flex items-center gap-1.5"
+                                style={{
+                                    whiteSpace: 'nowrap', padding: '7px 13px', borderRadius: 20,
+                                    border: '1px solid transparent',
+                                    background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                                    fontSize: 11, color: 'white', fontFamily: 'inherit',
+                                }}
+                            >
+                                <Drumstick className="w-3.5 h-3.5" />
                                 Feast Mode
-                             </button>
-                         )}
-                         <button 
-                            onClick={() => handleSend(null, "What should I eat today?")}
-                            className="whitespace-nowrap px-3 py-1.5 bg-indigo-50 text-indigo-700 text-xs font-semibold rounded-full hover:bg-indigo-100 transition-colors border border-indigo-100 shrink-0"
-                         >
-                            📅 What should I eat?
-                         </button>
-                         <button 
-                            onClick={handleTodaysWorkout}
-                            className="whitespace-nowrap px-3 py-1.5 bg-orange-50 text-orange-700 text-xs font-semibold rounded-full hover:bg-orange-100 transition-colors border border-orange-100 shrink-0"
-                         >
-                            💪 Today's Workout
-                         </button>
-                         <button 
-                            onClick={() => handleSend(null, "I'm feeling low energy today, suggest a lighter workout or rest")}
-                            className="whitespace-nowrap px-3 py-1.5 bg-blue-50 text-blue-700 text-xs font-semibold rounded-full hover:bg-blue-100 transition-colors border border-blue-100 shrink-0"
-                         >
-                            😓 I'm too tired today
-                         </button>
-                         <button 
-                            onClick={() => handleSend(null, "Give me a summary of my progress this week")}
-                            className="whitespace-nowrap px-3 py-1.5 bg-green-50 text-green-700 text-xs font-semibold rounded-full hover:bg-green-100 transition-colors border border-green-100 shrink-0"
-                         >
-                            📈 My Progress
-                         </button>
-                         <button 
-                            onClick={() => handleSend(null, "Am I on track to reach my goal based on my recent activity?")}
-                            className="whitespace-nowrap px-3 py-1.5 bg-teal-50 text-teal-700 text-xs font-semibold rounded-full hover:bg-teal-100 transition-colors border border-teal-100 shrink-0"
-                         >
-                            🎯 Am I on track?
-                         </button>
+                            </button>
+                        )}
+                        <button onClick={() => handleSend(null, "What should I eat today?")} className="shrink-0 cursor-pointer flex items-center gap-1.5" style={{ whiteSpace: 'nowrap', padding: '7px 13px', borderRadius: 20, border: '1px solid #e5e7eb', background: 'white', fontSize: 11, color: '#374151', fontFamily: 'inherit' }}>
+                            <Utensils className="w-3.5 h-3.5" />
+                            What should I eat?
+                        </button>
+                        <button onClick={handleTodaysWorkout} className="shrink-0 cursor-pointer flex items-center gap-1.5" style={{ whiteSpace: 'nowrap', padding: '7px 13px', borderRadius: 20, border: '1px solid #e5e7eb', background: 'white', fontSize: 11, color: '#374151', fontFamily: 'inherit' }}>
+                            <Dumbbell className="w-3.5 h-3.5" />
+                            Today's Workout
+                        </button>
+                        <button onClick={() => handleSend(null, "I'm feeling low energy today, suggest a lighter workout or rest")} className="shrink-0 cursor-pointer flex items-center gap-1.5" style={{ whiteSpace: 'nowrap', padding: '7px 13px', borderRadius: 20, border: '1px solid #e5e7eb', background: 'white', fontSize: 11, color: '#374151', fontFamily: 'inherit' }}>
+                            <BatteryLow className="w-3.5 h-3.5" />
+                            I'm too tired today
+                        </button>
+                        <button onClick={() => handleSend(null, "Give me a summary of my progress this week")} className="shrink-0 cursor-pointer flex items-center gap-1.5" style={{ whiteSpace: 'nowrap', padding: '7px 13px', borderRadius: 20, border: '1px solid #e5e7eb', background: 'white', fontSize: 11, color: '#374151', fontFamily: 'inherit' }}>
+                            <TrendingUp className="w-3.5 h-3.5" />
+                            My Progress
+                        </button>
+                        <button onClick={() => handleSend(null, "Am I on track to reach my goal based on my recent activity?")} className="shrink-0 cursor-pointer flex items-center gap-1.5" style={{ whiteSpace: 'nowrap', padding: '7px 13px', borderRadius: 20, border: '1px solid #e5e7eb', background: 'white', fontSize: 11, color: '#374151', fontFamily: 'inherit' }}>
+                            <Target className="w-3.5 h-3.5" />
+                            Am I on track?
+                        </button>
                     </div>
 
-                    {/* Input Area */}
-                    <div className="border-t border-gray-200 p-4 bg-white shrink-0">
-                        <form onSubmit={handleSend} className="flex gap-3">
+                    {/* Input Bar */}
+                    <div className="aicoach-input-bar shrink-0 flex gap-2.5 items-center" style={{ borderTop: '1px solid #f0f2f5' }}>
+                        <form onSubmit={handleSend} className="flex gap-2.5 items-center w-full">
                             <input
                                 ref={inputRef}
                                 type="text"
@@ -1047,18 +1052,73 @@ const AICoach = () => {
                                 onChange={(e) => setInput(e.target.value)}
                                 placeholder="Ask me anything..."
                                 disabled={isLoading}
-                                className="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed text-gray-900 placeholder-gray-500"
+                                className="flex-1 outline-none"
+                                style={{
+                                    padding: '11px 16px',
+                                    borderRadius: 24,
+                                    border: '1.5px solid #e5e7eb',
+                                    fontFamily: 'inherit',
+                                    fontSize: 13,
+                                    color: '#1f2937',
+                                    background: '#fafafa',
+                                    transition: 'border-color 0.2s',
+                                }}
+                                onFocus={(e) => { e.target.style.borderColor = '#6366f1'; e.target.style.background = 'white'; }}
+                                onBlur={(e) => { e.target.style.borderColor = '#e5e7eb'; e.target.style.background = '#fafafa'; }}
                             />
                             <button
                                 type="submit"
                                 disabled={!input.trim() || isLoading}
-                                className="px-6 py-3 bg-linear-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-medium"
+                                className="shrink-0 flex items-center justify-center cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                style={{
+                                    width: 42, height: 42,
+                                    background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                                    border: 'none', borderRadius: '50%',
+                                    fontSize: 16, transition: 'transform 0.15s',
+                                    color: 'white',
+                                }}
+                                onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.08)'}
+                                onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
                             >
                                 <Send className="w-4 h-4" />
-                                Send
                             </button>
                         </form>
                     </div>
+                </div>
+
+                {/* ══ RIGHT PANEL (30%) — desktop: inline, mobile: slide-over ══ */}
+
+                {/* Desktop panel (always visible, part of flex layout) */}
+                <div className="feast-panel-desktop">
+                    <FeastModePanel
+                        isActivating={feastActivating}
+                        proposalData={activationProposal}
+                        feastStatus={feastStatus}
+                        onActivationComplete={handleFeastActivationComplete}
+                    />
+                </div>
+
+                {/* Mobile overlay panel */}
+                {showRightPanel && (
+                    <div className="feast-panel-mobile-backdrop" onClick={() => setShowRightPanel(false)} />
+                )}
+                <div className={`feast-panel-mobile ${showRightPanel ? 'open' : ''}`}>
+                    <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                        <span style={{ color: 'white', fontWeight: 700, fontSize: 13 }}>Feast Mode Panel</span>
+                        <button
+                            onClick={() => setShowRightPanel(false)}
+                            className="cursor-pointer"
+                            style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)' }}
+                        >
+                            <X className="w-5 h-5" />
+                        </button>
+                    </div>
+                    <FeastModePanel
+                        isActivating={feastActivating}
+                        proposalData={activationProposal}
+                        feastStatus={feastStatus}
+                        onActivationComplete={handleFeastActivationComplete}
+                    />
                 </div>
             </div>
         </div>

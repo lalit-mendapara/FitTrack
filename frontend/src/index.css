@@ -50,3 +50,489 @@
 .animate-progress-indeterminate {
   animation: progress-indeterminate 1.5s infinite linear;
 }
+
+/* ══════════════════════════════════════════════════════
+   FEAST MODE — Right Panel & Animations
+   ══════════════════════════════════════════════════════ */
+
+/* ── ANIMATIONS ── */
+@keyframes feast-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.07); }
+}
+@keyframes feast-spin {
+  from { transform: translate(-50%,-50%) rotate(0deg); }
+  to   { transform: translate(-50%,-50%) rotate(360deg); }
+}
+@keyframes feast-ticker {
+  0% { transform: translateX(100%); }
+  100% { transform: translateX(-300%); }
+}
+@keyframes feast-bounce {
+  0%, 80%, 100% { transform: translateY(0); }
+  40% { transform: translateY(-5px); }
+}
+@keyframes feast-pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+@keyframes feast-slideUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes feast-fall {
+  0%   { transform: translateY(-20px) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+}
+
+/* ── CONFETTI ── */
+.feast-confetti-dot {
+  position: fixed;
+  pointer-events: none;
+  border-radius: 2px;
+  animation: feast-fall linear forwards;
+  z-index: 9999;
+}
+
+/* ── RIGHT PANEL ── */
+.feast-right-panel {
+  width: 100%;
+  background: #0f0d1f;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex-shrink: 0;
+}
+@media (min-width: 1024px) {
+  .feast-right-panel {
+    width: 30%;
+  }
+}
+.feast-right-panel::-webkit-scrollbar { width: 3px; }
+.feast-right-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); }
+
+.feast-rp-inner {
+  padding: 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ── HERO ACTIVATION CARD ── */
+.feast-hero-card {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 18px;
+  padding: 20px 16px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.feast-hero-bg-glow {
+  position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(ellipse at 50% -10%, rgba(99,102,241,0.3), transparent 65%);
+  transition: background 1s ease;
+}
+.feast-hero-bg-glow.done {
+  background: radial-gradient(ellipse at 50% -10%, rgba(251,191,36,0.35), transparent 65%);
+}
+
+/* ── ORB ── */
+.feast-orb-wrap {
+  position: relative;
+  display: inline-block;
+  margin-bottom: 14px;
+}
+.feast-orb {
+  width: 72px; height: 72px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 30px;
+  background: radial-gradient(circle at 35% 35%, #818cf8, #6366f1, #7c3aed);
+  box-shadow: 0 0 30px rgba(99,102,241,0.6), 0 0 60px rgba(124,58,237,0.2);
+  animation: feast-breathe 2.2s ease-in-out infinite;
+  transition: background 0.8s ease, box-shadow 0.8s ease;
+  position: relative; z-index: 1;
+}
+.feast-orb.done {
+  background: radial-gradient(circle at 35% 35%, #fde68a, #fbbf24, #f97316);
+  box-shadow: 0 0 40px rgba(251,191,36,0.65), 0 0 80px rgba(249,115,22,0.25);
+}
+.feast-orbit-ring {
+  position: absolute; top: 50%; left: 50%;
+  width: 96px; height: 96px; border-radius: 50%;
+  border: 1.5px dashed rgba(255,255,255,0.14);
+  transform: translate(-50%, -50%);
+  animation: feast-spin 9s linear infinite;
+}
+.feast-orbit-dot {
+  position: absolute; top: -3px; left: 50%;
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #818cf8; transform: translateX(-50%);
+  transition: background 0.8s;
+}
+.feast-orbit-dot.done { background: #fbbf24; }
+
+.feast-hero-title {
+  font-size: 16px; font-weight: 800; color: white;
+  letter-spacing: -0.3px; margin-bottom: 3px;
+}
+.feast-hero-sub {
+  font-size: 11px; color: rgba(255,255,255,0.45);
+  margin-bottom: 16px; min-height: 16px;
+}
+
+/* ── CIRCULAR RING ── */
+.feast-ring-wrap {
+  position: relative; width: 80px; height: 80px;
+  margin: 0 auto 14px;
+}
+.feast-ring-wrap svg {
+  width: 100%; height: 100%; transform: rotate(-90deg);
+}
+.feast-ring-track {
+  fill: none; stroke: rgba(255,255,255,0.08); stroke-width: 7;
+}
+.feast-ring-fill {
+  fill: none; stroke: #818cf8; stroke-width: 7; stroke-linecap: round;
+  stroke-dasharray: 263.9; stroke-dashoffset: 263.9;
+  transition: stroke-dashoffset 0.1s linear, stroke 0.6s ease;
+}
+.feast-ring-fill.done { stroke: #fbbf24; }
+.feast-ring-pct {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; font-weight: 800; color: white;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* ── STEP DOTS ── */
+.feast-step-dots {
+  display: flex; justify-content: center; gap: 5px;
+}
+.feast-step-dot {
+  height: 5px; border-radius: 3px;
+  background: rgba(255,255,255,0.18); width: 5px;
+  transition: width 0.35s ease, background 0.35s ease;
+}
+.feast-step-dot.active { width: 16px; background: #818cf8; }
+.feast-step-dot.active.done { background: #fbbf24; }
+
+/* ── SECTION CARD ── */
+.feast-section-card {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 16px;
+  padding: 14px;
+}
+.feast-eyebrow {
+  font-size: 9px; font-weight: 700; color: rgba(255,255,255,0.3);
+  letter-spacing: 2px; margin-bottom: 10px; text-transform: uppercase;
+}
+
+/* ── UNLOCKS ── */
+.feast-unlock-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+}
+.feast-unlock-item {
+  padding: 10px; border-radius: 10px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.04);
+  opacity: 0.3; transform: scale(0.94);
+  transition: all 0.45s ease;
+}
+.feast-unlock-item.revealed {
+  background: rgba(255,255,255,0.07);
+  border-color: rgba(255,255,255,0.1);
+  opacity: 1; transform: scale(1);
+}
+.feast-unlock-name {
+  font-size: 9px; color: rgba(255,255,255,0.4); margin-bottom: 4px;
+}
+.feast-unlock-val {
+  font-size: 13px; font-weight: 800;
+  color: rgba(255,255,255,0.2); transition: color 0.4s;
+}
+
+/* ── TIPS ── */
+.feast-tip-inner {
+  display: flex; gap: 10px; align-items: flex-start;
+  opacity: 1; transform: translateY(0);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+.feast-tip-hidden {
+  opacity: 0; transform: translateY(6px);
+}
+.feast-tip-emoji {
+  font-size: 20px; background: rgba(255,255,255,0.07);
+  border-radius: 8px; padding: 7px 8px; flex-shrink: 0; line-height: 1;
+}
+.feast-tip-title {
+  font-size: 12px; font-weight: 700; color: white; margin-bottom: 3px;
+}
+.feast-tip-body {
+  font-size: 10px; color: rgba(255,255,255,0.45); line-height: 1.5;
+}
+.feast-tip-dots {
+  display: flex; gap: 4px; margin-top: 10px;
+}
+.feast-tip-dot {
+  width: 4px; height: 4px; border-radius: 50%;
+  background: rgba(255,255,255,0.18); transition: background 0.3s;
+}
+.feast-tip-dot.active { background: #818cf8; }
+
+/* ── FEAST PREVIEW ── */
+.feast-preview {
+  background: linear-gradient(135deg, rgba(99,102,241,0.18), rgba(245,158,11,0.12));
+  border: 1px solid rgba(99,102,241,0.25);
+  border-radius: 16px;
+  padding: 14px;
+  display: flex; gap: 10px; align-items: center;
+}
+.feast-preview-emoji { font-size: 28px; flex-shrink: 0; }
+.feast-preview-title { font-size: 12px; font-weight: 700; color: white; margin-bottom: 2px; }
+.feast-preview-body { font-size: 10px; color: rgba(255,255,255,0.45); line-height: 1.4; }
+.feast-preview-badge {
+  margin-left: auto; flex-shrink: 0;
+  background: rgba(99,102,241,0.28); border-radius: 8px;
+  padding: 5px 9px; font-size: 9px; font-weight: 700; color: #a5b4fc;
+  white-space: nowrap; transition: all 0.4s;
+}
+
+/* ── TICKER ── */
+.feast-ticker {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: flex; align-items: center; gap: 8px;
+  overflow: hidden;
+}
+.feast-ticker-label {
+  font-size: 8px; font-weight: 700; color: rgba(255,255,255,0.25);
+  letter-spacing: 1.5px; white-space: nowrap;
+}
+.feast-ticker-divider {
+  width: 1px; height: 14px; background: rgba(255,255,255,0.1); flex-shrink: 0;
+}
+.feast-ticker-scroll { flex: 1; overflow: hidden; }
+.feast-ticker-inner {
+  display: inline-block; font-size: 10px; color: rgba(255,255,255,0.45);
+  white-space: nowrap; animation: feast-ticker 22s linear infinite;
+}
+
+/* ── CHAT AREA FEAST STRATEGY CARD (inline) ── */
+.feast-chat-card {
+  background: white;
+  border: 1px solid #eaecf0;
+  border-radius: 16px;
+  overflow: hidden;
+  margin-top: 6px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+  max-width: 340px;
+}
+.feast-chat-card .feast-card-header {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  padding: 12px 16px;
+  display: flex; align-items: center; gap: 8px;
+}
+.feast-chat-card .feast-card-header-icon { font-size: 18px; }
+.feast-chat-card .feast-card-header-title { color: white; font-weight: 700; font-size: 13px; }
+.feast-chat-card .feast-card-header-sub { color: rgba(255,255,255,0.7); font-size: 11px; }
+.feast-chat-card .feast-card-body { padding: 14px 16px; }
+
+/* ── TYPING INDICATOR ── */
+.feast-typing-bubble {
+  background: #f7f8fc;
+  border: 1px solid #eaecf0;
+  border-radius: 16px;
+  border-top-left-radius: 4px;
+  padding: 12px 16px;
+  display: inline-flex; gap: 4px; align-items: center;
+}
+.feast-typing-bubble span {
+  width: 6px; height: 6px; border-radius: 50%; background: #9ca3af;
+  animation: feast-bounce 1.2s ease-in-out infinite;
+}
+.feast-typing-bubble span:nth-child(2) { animation-delay: 0.2s; }
+.feast-typing-bubble span:nth-child(3) { animation-delay: 0.4s; }
+
+/* ── STATUS DOT PULSE ── */
+.feast-status-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #4ade80;
+  animation: feast-pulse-dot 2s ease-in-out infinite;
+}
+
+/* ── SLIDE UP ANIMATION ── */
+.feast-slide-up {
+  animation: feast-slideUp 0.4s ease;
+}
+
+/* ── RESPONSIVE PANEL ── */
+
+/* Desktop wrapper: visible only on lg+ */
+.feast-panel-desktop {
+  display: none;
+}
+@media (min-width: 1024px) {
+  .feast-panel-desktop {
+    display: contents; /* pass-through so FeastModePanel keeps its own styles */
+  }
+}
+
+/* Mobile wrapper: slide-over from right */
+.feast-panel-mobile {
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  top: 0; right: 0; bottom: 0;
+  width: 340px;
+  max-width: 85vw;
+  background: #0f0d1f;
+  z-index: 50;
+  transform: translateX(100%);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-shadow: -8px 0 30px rgba(0,0,0,0.3);
+}
+.feast-panel-mobile.open {
+  transform: translateX(0);
+}
+.feast-panel-mobile .feast-right-panel {
+  width: 100%;
+  flex: 1;
+}
+
+/* Backdrop */
+.feast-panel-mobile-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 49;
+}
+
+/* Hide mobile panel on lg+ (desktop uses inline panel) */
+@media (min-width: 1024px) {
+  .feast-panel-mobile,
+  .feast-panel-mobile-backdrop {
+    display: none !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   AI COACH — RESPONSIVE LAYOUT
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── HEADER ── */
+.aicoach-header        { padding: 14px 24px; }
+.aicoach-bot-avatar    { width: 38px; height: 38px; }
+.aicoach-header-title  { font-size: 15px; }
+.aicoach-header-sub    { font-size: 11px; }
+
+/* ── MESSAGES ── */
+.aicoach-messages      { padding: 20px 24px; }
+
+/* ── MESSAGE ROW ── */
+.aicoach-msg           { max-width: 85%; }
+
+/* ── BUBBLE ── */
+.aicoach-bubble        { padding: 11px 15px; }
+
+/* ── QUICK REPLIES ── */
+.aicoach-quick-replies { padding: 10px 24px; }
+
+/* ── INPUT BAR ── */
+.aicoach-input-bar     { padding: 12px 20px 14px; }
+
+/* ─── MOBILE OVERRIDES (<640px) ─── */
+@media (max-width: 639px) {
+  /* Header — compact */
+  .aicoach-header        { padding: 8px 12px; gap: 8px !important; }
+  .aicoach-bot-avatar    { width: 32px; height: 32px; font-size: 16px !important; border-radius: 10px !important; }
+  .aicoach-header-title  { font-size: 13px; }
+  .aicoach-header-sub    { font-size: 10px; }
+
+  /* Messages — tighter padding */
+  .aicoach-messages      { padding: 12px 12px; gap: 10px !important; }
+
+  /* Message row — wider on small screens */
+  .aicoach-msg           { max-width: 88%; }
+
+  /* Bubble — less padding, same font */
+  .aicoach-bubble        { padding: 9px 12px; font-size: 13px !important; }
+
+  /* Quick replies — tighter, hide scrollbar */
+  .aicoach-quick-replies { padding: 7px 12px; gap: 6px !important; }
+  .aicoach-quick-replies::-webkit-scrollbar { display: none; }
+  .aicoach-quick-replies button,
+  .aicoach-quick-replies div[style] {
+    padding: 6px 10px !important;
+    font-size: 10px !important;
+  }
+
+  /* Input bar — tighter */
+  .aicoach-input-bar     { padding: 8px 12px 10px; gap: 8px !important; }
+}
+
+/* ─── TABLET OVERRIDES (640–1023px) ─── */
+@media (min-width: 640px) and (max-width: 1023px) {
+  .aicoach-header        { padding: 11px 18px; }
+  .aicoach-messages      { padding: 16px 18px; }
+  .aicoach-msg           { max-width: 82%; }
+  .aicoach-quick-replies { padding: 9px 18px; }
+  .aicoach-input-bar     { padding: 10px 16px 12px; }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PROSE / MARKDOWN — overflow-safe for chat bubbles
+   ═══════════════════════════════════════════════════════════ */
+.aicoach-prose {
+  word-break: break-word;
+  overflow-wrap: break-word;
+  min-width: 0;
+}
+
+/* Tables inside chat bubbles — horizontal scroll instead of overflow */
+.aicoach-prose table {
+  display: block;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.aicoach-prose th,
+.aicoach-prose td {
+  padding: 6px 8px;
+  border: 1px solid #e5e7eb;
+  white-space: normal;
+  word-break: break-word;
+}
+.aicoach-prose th {
+  background: #f3f4f6;
+  font-weight: 700;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+/* Code blocks inside bubbles */
+.aicoach-prose pre {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+/* Images inside bubbles */
+.aicoach-prose img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* On mobile, make tables even more compact */
+@media (max-width: 639px) {
+  .aicoach-prose table { font-size: 11px; }
+  .aicoach-prose th,
+  .aicoach-prose td   { padding: 4px 6px; }
+}
