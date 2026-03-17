@@ -82,6 +82,25 @@ class FitnessCoachService:
             
         return " ".join(keywords)
 
+    def _diet_allows_food(self, user_diet_type: Optional[str], food_diet_type: Optional[str]) -> bool:
+        """
+        Ensures we only surface dishes that match the user's diet preference.
+        Veg → only veg. Non-veg → only non-veg. Both → allow everything.
+        """
+        if not user_diet_type or user_diet_type.lower() in {"", "both"}:
+            return True
+
+        normalized_user = user_diet_type.lower()
+        normalized_food = (food_diet_type or "").lower()
+
+        if normalized_user in {"veg", "vegetarian"}:
+            return normalized_food == "veg"
+
+        if normalized_user in {"non_veg", "non-veg", "nonveg"}:
+            return normalized_food == "non-veg"
+
+        return True
+
     def _detect_history_intent(self, message: str) -> dict:
         """
         Uses LLM to detect if the user is asking about a specific past date.
@@ -839,14 +858,23 @@ class FitnessCoachService:
         """Node: Fetches relevant foods/exercises from Vector/SQL."""
         msg = state["user_message"]
         search_term = self._extract_search_terms(msg)
-        
+        context = state.get("user_context") or {}
+        profile = context.get("profile") or {}
+        user_diet_type = profile.get("diet_type")
+
         # Foods
-        sql_foods = self.stats_service.search_food_by_name(search_term)
-        vector_foods = self.vector_service.search_food(msg, limit=5)
-        
+        sql_foods = self.stats_service.search_food_by_name(search_term, diet_type=user_diet_type)
+        vector_foods_raw = self.vector_service.search_food(msg, limit=5)
+        vector_foods = [
+            f for f in vector_foods_raw
+            if self._diet_allows_food(user_diet_type, f.get("diet_type"))
+        ]
+
         seen_foods = set()
         food_knowledge = []
         for f in sql_foods + vector_foods:
+            if not self._diet_allows_food(user_diet_type, f.get("diet_type")):
+                continue
             if f['name'] not in seen_foods:
                 food_knowledge.append(f)
                 seen_foods.add(f['name'])
@@ -1156,6 +1184,13 @@ class FitnessCoachService:
         diet = context.get("diet_plan", [])
         workout = context.get("workout_plan", {})
         prefs = context.get("preferences", {})
+        diet_pref = (profile.get('diet_type') or 'both').lower()
+        if diet_pref in ["veg", "vegetarian"]:
+            diet_rule = "User is STRICTLY VEGETARIAN. Never recommend eggs, meat, or fish."
+        elif diet_pref in ["non_veg", "non-veg", "nonveg"]:
+            diet_rule = "User is STRICTLY NON-VEGETARIAN. Every suggested dish should contain a non-veg protein."
+        else:
+            diet_rule = "User enjoys BOTH Veg & Non-Veg foods. Provide a balanced mix in suggestions."
 
         # Format Profile
         profile_str = (
@@ -1358,7 +1393,11 @@ class FitnessCoachService:
         **PROFILE CONSISTENCY CHECK**:
         - IF user asks for something contradictory to their current profile (e.g., User goal is 'Weight Loss' but asks "How to gain weight?"):
           - **REPLY**: "Currently your priority and profile is {profile.get('goal', 'Health')}, but to update any profile data you need to update your profile from the profile section."
-    
+
+        **DIET PREFERENCE ENFORCEMENT**:
+        - {diet_rule}
+        - If the user asks for something outside this preference, remind them to update their profile first instead of suggesting the dish.
+
         ## 2. KNOWLEDGE RETRIEVAL
         - Use the KNOWLEDGE BASE for specific food/exercise stats provided above
         - When recommending foods, reference their actual calories and macros from the knowledge base
@@ -1440,52 +1479,13 @@ class FitnessCoachService:
         - Show the math briefly
         - Get back to normal without dwelling
         - Example: "How was the wedding? Your Feast Mode worked perfectly - banked 700 cal, enjoyed the night, net impact minimal. Back to regular programming today! 💪"
-    
-        === 🛡️ GUARDRAILS (STRICT ENFORCEMENT) ===
-    
-        ## 1. 🚑 MEDICAL WALL (ABSOLUTE REFUSAL)
-        **Triggers**: "pain", "hurt", "swollen", "injury", "doctor", "medication", "supplement for pain", "healing", "recovery from injury"
-    
-        **ACTION**: You MUST refuse. Do not try to be helpful with "gentle exercises"
-    
-        **RESPONSE**: "I'm an AI fitness coach, not a doctor. Please consult a medical professional for any pain or injury before we work on fitness together. Your safety comes first! ⚠️"
-    
-        ## 2. 🚫 OUT OF SCOPE
-        **Triggers**: Politics, Sports Scores, Coding, Homework, General Trivia, Non-fitness topics
-    
-        **ACTION**: Politely decline and redirect
-    
-        **RESPONSE**: "I'm here to help with your fitness and nutrition goals! I can't help with that, but let's get back to your {profile.get('goal', 'health journey')}. What can I help you with today?"
-    
-        ## 3. ⚠️ EXTREME/UNSAFE ADVICE
-        **Triggers**: 
-        - Very low calories (<1200kcal for women, <1500kcal for men)
-        - Starvation diets or extreme fasting
-        - Dangerous supplements or quick fixes
-        - Overtraining (7+ days intense workouts without rest)
-        - Single meal > 1000 kcal requests
-    
-        **ACTION**: Refuse and warn, then offer healthy alternative
-    
-        **RESPONSE**: "That approach isn't safe or sustainable, and I can't recommend it. Let's find a balanced way to reach your goal that keeps you healthy and energized. How about we aim for [safer alternative]?"
-    
-        ## 4. 😔 HANDLING USER STRUGGLES
-        **When User Says**:
-        - "I broke my diet" / "I overate" / "I failed"
-    
-        **❌ NEVER**: "You shouldn't have done that" or "That's a setback"
-    
-        **✅ ALWAYS**: Empathetic + Solution
-        - "Hey, it happens to everyone! One meal doesn't define your journey. Want to do a light Feast Mode retroactively to balance things out?"
-        - "No worries! You're still {progress.get('workouts_last_7_days', 0)} workouts strong this week. Let's get back on track today 💪"
-    
-        **When User is Demotivated**:
-        - Acknowledge feelings first
-        - Remind of past progress from their data
-        - Suggest smaller, achievable goals
-        - Offer to adjust plan to make it easier
-        - Example: "I get it, some days are tough. But you've logged {progress.get('workouts_last_7_days', 0)} workouts this week - that's not luck, that's YOU showing up. What's feeling hardest right now?"
-    
+        
+        === SAFETY & TONE ===
+        - Stay inside evidence-based fitness/nutrition coaching
+        - Keep users safe: decline medical diagnosis, extreme/unsafe advice, or off-topic requests
+        - Redirect compassionately and encourage healthy alternatives when something feels risky
+        - Nemoguardrails enforces stricter policies automatically—cooperate with those outcomes
+        
         ## 5. 🎯 CONVERSATION FLOW PATTERNS
     
         **Quick Query**:

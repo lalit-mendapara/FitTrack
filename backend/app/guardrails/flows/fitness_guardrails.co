@@ -1,0 +1,103 @@
+# FitCoach guardrails flows expressed in Colang.
+# These flows focus on intercepting unsafe / out-of-scope topics
+# and forwarding empathy / redirect behaviors through Nemoguardrails.
+
+# --- User canonical forms --------------------------------------------------
+
+define user ask medical_help
+  "my knee hurts after lifting"
+  "i feel pain in my shoulder"
+  "what medication should i take"
+  "doctor said"
+  "i injured"
+  "fix my back pain"
+
+define user ask extreme_diet
+  "can i just eat 800 calories"
+  "tell me a starvation diet"
+  "i want to fast for 5 days"
+  "how do i lose 10kg this week"
+  "i want to work out 7 days straight"
+  "give me a 1500 calorie meal for one sitting"
+
+define user ask out_of_scope
+  "who won the soccer game"
+  "help me with my homework"
+  "write code"
+  "what's the stock price"
+  "tell me politics news"
+  "who is pm of india"
+  "who is the president"
+  "what is the capital of"
+  "tell me about history"
+  "current events"
+  "general knowledge"
+  "who is"
+  "what is"
+  "tell me about"
+  "what is 6 plus 6"
+  "solve this equation: 2x + 5 = 10"
+  "calculate the square root of 81"
+  "what is 10 divided by 2"
+  "can you do math for me"
+  "i have a math question"
+
+define user express regret
+  "i failed my diet"
+  "i overate"
+  "i missed my workout"
+  "i'm demotivated"
+  "i feel guilty"
+
+# --- Bot canonical forms ---------------------------------------------------
+
+define bot refuse medical_help
+  ${{ respond_with_task("refuse_medical") }}
+
+define bot refuse extreme_diet
+  ${{ respond_with_task("refuse_extreme_diet") }}
+
+define bot refuse out_of_scope
+  ${{ respond_with_task("refuse_out_of_scope") }}
+
+define bot provide empathy_reset
+  ${{ respond_with_task("empathy_reset") }}
+
+define bot provide redirect_tip
+  ${{ respond_with_task("redirect_safe_tip") }}
+
+# --- Guardrail flows -------------------------------------------------------
+
+define flow medical_wall
+  user ask medical_help
+  bot refuse medical_help
+
+
+define flow extreme_diet_wall
+  user ask extreme_diet
+  bot refuse extreme_diet
+  bot provide redirect_tip
+
+
+define flow out_of_scope_wall
+  user ask out_of_scope
+  bot refuse out_of_scope
+
+
+define flow empathy_repair
+  user express regret
+  bot provide empathy_reset
+
+# --- Default dialog --------------------------------------------------------
+
+define user ask fitness_help
+  ${{ user_message }}
+
+
+define bot provide fitness_help
+  ${{ llm_response }}
+
+
+define flow default_dialog
+  user ask fitness_help
+  bot provide fitness_help

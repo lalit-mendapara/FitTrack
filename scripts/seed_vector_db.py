@@ -9,6 +9,15 @@ from tqdm import tqdm
 
 # Add backend directory to path
 import sys, os; from pathlib import Path; sys.path.insert(0, str([p for p in Path(__file__).resolve().parents if (p / 'backend').exists()][0] / 'backend')) # modified
+from pathlib import Path
+
+# Add backend directory (or repo root) to PYTHONPATH
+ROOT = Path(__file__).resolve()
+backend_root = next(
+    (p / "backend" for p in ROOT.parents if (p / "backend").exists()),
+    ROOT.parent  # fallback: the repo root (e.g., /app inside Docker)
+)
+sys.path.insert(0, str(backend_root))
 try:
     from config import QDRANT_URL, QDRANT_API_KEY, SQLALCHEMY_DATABASE_URL
 except ImportError:

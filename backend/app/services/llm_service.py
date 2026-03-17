@@ -2,8 +2,10 @@
 import os
 import sys
 import json
+import time
 import base64
 import hashlib
+import re
 import requests
 from typing import Dict, List, Optional, Any
 
@@ -12,6 +14,12 @@ from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from langchain_core.outputs import LLMResult
+try:
+    from nemoguardrails.rails.llm.options import GenerationResponse
+    _NEMO_GUARDRAILS_AVAILABLE = True
+except ModuleNotFoundError:
+    GenerationResponse = Any  # type: ignore[assignment]
+    _NEMO_GUARDRAILS_AVAILABLE = False
 
 # Langfuse SDK - @observe decorator for LLM tracing
 # On Python 3.14+, Langfuse is disabled due to Pydantic v1 incompatibility
@@ -30,6 +38,7 @@ if sys.version_info < (3, 14):
 
 # Configuration (env-var fallbacks — DB values take priority at runtime)
 from config import LLM_PROVIDER, LLM_API_KEY, LLM_MODEL as OVERRIDE_MODEL
+from app.services.guardrails_service import get_guardrails, guardrails_enabled, extract_usage_from_metadata
 
 # Default to local Ollama instance
 OLLAMA_URL = os.getenv("OLLAMA_URL")
@@ -45,6 +54,143 @@ DEFAULT_MODELS = {
 }
 
 MODEL_NAME = OVERRIDE_MODEL if OVERRIDE_MODEL else DEFAULT_MODELS.get(LLM_PROVIDER, "gpt-oss:120b-cloud")
+
+OUT_OF_SCOPE_REFUSAL_MESSAGE = (
+    "I'm here for fitness, nutrition, and Feast Mode planning. I can't help with that topic, "
+    "but let me know what health goal you'd like to tackle!"
+)
+
+GENERAL_KNOWLEDGE_PHRASES = (
+    "who is",
+    "who's",
+    "tell me about",
+    "how many",
+    "capital of",
+    "prime minister",
+    "president",
+    "stock price",
+    "solve",
+    "calculate",
+)
+
+MATH_EXPRESSION_PATTERN = re.compile(r"\b\d+\s*(?:[+\-*/xX]|plus|minus|times|divided by|over)\s*\d+\b", re.IGNORECASE)
+
+# Titles returned by the model that we consider non-useful and should be replaced
+GENERIC_TITLE_SET = {
+    "new chat",
+    "active chat",
+    "chat",
+    "chat session",
+    "session",
+    "conversation",
+    "conversation summary",
+    "untitled",
+}
+
+
+def _sanitize_model_title(raw_title: Optional[str]) -> str:
+    """Normalize raw LLM output into a single-line title."""
+    if not raw_title:
+        return ""
+
+    cleaned = raw_title.strip()
+    if cleaned.lower().startswith("title:"):
+        cleaned = cleaned[6:].strip()
+
+    cleaned = cleaned.strip('"\'\u201c\u201d')
+    cleaned = re.sub(r"\s+", " ", cleaned)
+
+    # Trim overly long titles
+    if len(cleaned) > 50:
+        cleaned = cleaned[:47].rstrip() + "..."
+
+    return cleaned
+
+
+def _fallback_title_from_text(text: str) -> str:
+    """Create a deterministic title from user text when LLM output is unusable."""
+    if not text:
+        return "Chat Session"
+
+    cleaned = re.sub(r"[\r\n]+", " ", text).strip()
+    if not cleaned:
+        return "Chat Session"
+
+    # Remove repeated whitespace and trim punctuation at the ends
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    cleaned = cleaned.strip('"\'\u201c\u201d.,;:')
+
+    words = cleaned.split()
+    if not words:
+        return "Chat Session"
+
+    fallback = " ".join(words[:5])
+    return fallback.title()
+
+
+def _history_fallback_text(history: List[Dict[str, str]]) -> str:
+    """Build fallback text using available conversation history."""
+    if not history:
+        return ""
+
+    user_messages = [msg.get("content", "") for msg in history if msg.get("role") == "user" and msg.get("content")]
+    source_text = " ".join(user_messages) if user_messages else history[-1].get("content", "")
+    return source_text or ""
+
+
+def _finalize_title(raw_title: Optional[str], fallback_source: str) -> str:
+    """Ensure we always return a meaningful title."""
+    cleaned = _sanitize_model_title(raw_title)
+    if not cleaned:
+        cleaned = _fallback_title_from_text(fallback_source)
+
+    lowered = cleaned.lower()
+    if lowered in GENERIC_TITLE_SET:
+        cleaned = _fallback_title_from_text(fallback_source)
+
+    return cleaned or "Chat Session"
+
+
+def _extract_current_user_message(prompt: Optional[str]) -> str:
+    if not prompt:
+        return ""
+
+    marker = "CURRENT USER MESSAGE:"
+    if marker not in prompt:
+        return prompt.strip()
+
+    # Take the text after the final marker to avoid older history
+    return prompt.rsplit(marker, 1)[-1].strip()
+
+
+def _detect_out_of_scope_prompt(prompt: Optional[str]) -> Optional[str]:
+    current_text = _extract_current_user_message(prompt)
+    if not current_text:
+        return None
+
+    normalized = current_text.lower().strip()
+    if not normalized:
+        return None
+
+    # Check for math expressions first (most specific)
+    math_match = MATH_EXPRESSION_PATTERN.search(normalized)
+    if math_match:
+        print(
+            "[LLM Service] Math expression detected:",
+            f"match='{math_match.group()}', message='{current_text}'",
+        )
+        return "math_expression"
+
+    # Check for general knowledge phrases
+    for phrase in GENERAL_KNOWLEDGE_PHRASES:
+        if phrase in normalized:
+            print(
+                "[LLM Service] General knowledge phrase detected:",
+                f"phrase='{phrase}', message='{current_text}'",
+            )
+            return f"phrase:{phrase}"
+
+    return None
 
 # Base URLs for paid providers
 PROVIDER_URLS = {
@@ -79,7 +225,7 @@ def _get_db_llm_config() -> dict:
         from app.models.system_setting import SystemSetting
         db = SessionLocal()
         try:
-            keys = ['llm_provider', 'llm_model', 'ollama_url', 'ollama_model', 'llm_api_key']
+            keys = ['llm_provider', 'llm_model', 'ollama_url', 'ollama_model', 'llm_api_key', 'guardrails_enabled']
             rows = db.query(SystemSetting).filter(SystemSetting.key.in_(keys)).all()
             return {
                 row.key: (_decrypt_value(row.value) if row.is_sensitive else (row.value or ''))
@@ -236,153 +382,267 @@ def validate_user_prompt(prompt: str, context_type: str = "general") -> bool:
         # Fail safe: blocking is safer for quality.
         raise ValueError("Could not validate your request due to a system error. Please try again.")
 
+def _build_langchain_messages(system_prompt: str, user_prompt: str) -> tuple[List, List[dict]]:
+    lc_messages = [
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=user_prompt),
+    ]
+    rail_messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+    return lc_messages, rail_messages
+
+
+def _call_with_guardrails(
+    rail_messages: List[dict],
+    temperature: float,
+    max_tokens: int,
+    json_mode: bool,
+    cfg: dict,
+) -> Optional[str]:
+    guardrails = get_guardrails()
+    if not guardrails:
+        print("[LLM Service] Guardrails requested but not available (init failed or disabled at runtime).")
+        return None
+
+    print("[LLM Service] Guardrails enabled — routing through Nemoguardrails")
+    options = {
+        "llm_params": {
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "response_format": {"type": "json_object"} if json_mode else None,
+        }
+    }
+    # Clean out None entries from llm_params
+    options["llm_params"] = {k: v for k, v in options["llm_params"].items() if v is not None}
+
+    try:
+        response = guardrails.generate(messages=rail_messages, options=options)
+        # Log detailed response structure for debugging
+        print(f"[LLM Service] Guardrails raw response type: {type(response)}")
+        if hasattr(response, '__dict__'):
+            attrs = {k: v for k, v in response.__dict__.items() if not k.startswith('_')}
+            print(f"[LLM Service] Guardrails response attributes: {list(attrs.keys())}")
+            if 'response' in attrs:
+                print(f"[LLM Service] Guardrails response field preview: {str(attrs['response'])[:200]}")
+            if 'rails' in attrs:
+                print(f"[LLM Service] Guardrails matched rails: {attrs['rails']}")
+            if 'actions' in attrs:
+                print(f"[LLM Service] Guardrails actions: {attrs['actions']}")
+            if 'state' in attrs:
+                print(f"[LLM Service] Guardrails state: {attrs['state']}")
+            if 'log' in attrs:
+                print(f"[LLM Service] Guardrails log: {attrs['log']}")
+    except Exception as exc:
+        print(f"[LLM Service] Guardrails call failed: {exc}")
+        return None
+
+    content = _extract_guardrail_content(response)
+    preview = (content or "").strip()
+    if preview:
+        preview = (preview[:180] + "…") if len(preview) > 200 else preview
+        print(f"[LLM Service] Guardrails response preview: {preview}")
+    else:
+        print("[LLM Service] Guardrails returned no content; will fall back to raw LLM.")
+        return None
+
+    # Guardrails currently hide raw metadata; we rely on the downstream llm metadata when available
+    if isinstance(response, GenerationResponse) and response.llm_metadata:
+        (
+            input_tokens,
+            output_tokens,
+            total_tokens,
+            prompt_eval_duration_ms,
+            eval_duration_ms,
+            total_duration_ms,
+        ) = extract_usage_from_metadata(response.llm_metadata)
+        _log_usage(
+            cfg,
+            input_tokens,
+            output_tokens,
+            total_tokens,
+            prompt_eval_duration_ms,
+            eval_duration_ms,
+            total_duration_ms,
+            "guardrails",
+            temperature,
+            max_tokens,
+        )
+
+    return content
+
+
+def _extract_guardrail_content(response: Any) -> Optional[str]:
+    if isinstance(response, GenerationResponse):
+        if isinstance(response.response, str):
+            return response.response
+        if isinstance(response.response, list) and response.response:
+            last_item = response.response[-1]
+            if isinstance(last_item, dict):
+                content = last_item.get("content")
+                if isinstance(content, str):
+                    return content
+                if isinstance(content, list):
+                    text_chunks = []
+                    for chunk in content:
+                        if isinstance(chunk, dict):
+                            if "text" in chunk and chunk["text"]:
+                                text_chunks.append(chunk["text"])
+                            elif "content" in chunk and chunk["content"]:
+                                text_chunks.append(str(chunk["content"]))
+                        elif isinstance(chunk, str):
+                            text_chunks.append(chunk)
+                    if text_chunks:
+                        return "\n".join(text_chunks)
+                return None
+            return str(last_item)
+        return None
+    if isinstance(response, dict):
+        return response.get("content") or response.get("response")
+    if isinstance(response, str):
+        return response
+    return None
+
+def _log_usage(
+    cfg: dict,
+    input_tokens: int,
+    output_tokens: int,
+    total_tokens: int,
+    prompt_eval_duration_ms: float,
+    eval_duration_ms: float,
+    total_duration_ms: float,
+    mode: str,
+    temperature: float,
+    max_tokens: int,
+):
+    if not (input_tokens or output_tokens or total_tokens):
+        return
+
+    live_model = cfg.get('llm_model') or OVERRIDE_MODEL or cfg.get('ollama_model') or MODEL_NAME
+    print(f"[LLM Stats] Input: {input_tokens}, Output: {output_tokens}, Total: {total_tokens}")
+    print(
+        f"[LLM Timing] PromptEval: {prompt_eval_duration_ms}ms, Generation: {eval_duration_ms}ms,"
+        f" Total: {total_duration_ms}ms"
+    )
+
+    if LANGFUSE_ENABLED and langfuse_client:
+        try:
+            langfuse_client.update_current_generation(
+                model=live_model,
+                usage_details={
+                    "input": input_tokens,
+                    "output": output_tokens,
+                    "total": total_tokens
+                },
+                model_parameters={
+                    "temperature": temperature,
+                    "max_tokens": max_tokens
+                },
+                metadata={
+                    "mode": mode,
+                    "prompt_eval_duration_ms": prompt_eval_duration_ms,
+                    "eval_duration_ms": eval_duration_ms,
+                    "total_duration_ms": total_duration_ms,
+                }
+            )
+        except Exception as e:
+            print(f"[Langfuse] Failed to update generation: {e}")
+
+
+def _invoke_raw_llm(
+    messages: List,
+    temperature: float,
+    max_tokens: int,
+    json_mode: bool,
+    cfg: dict,
+) -> Optional[str]:
+    wall_start = time.time()
+    llm = get_llm(temperature=temperature, max_tokens=max_tokens, json_mode=json_mode)
+    response = llm.invoke(messages)
+    wall_end = time.time()
+    wall_clock_ms = round((wall_end - wall_start) * 1000, 2)
+    content = response.content
+
+    if not content:
+        print("[LLM Service] Empty content received.")
+        return None
+
+    metadata = response.response_metadata or {}
+    (input_tokens, output_tokens, total_tokens, prompt_eval_duration_ms, eval_duration_ms, total_duration_ms) = (
+        extract_usage_from_metadata(metadata)
+    )
+    if total_duration_ms == 0:
+        total_duration_ms = wall_clock_ms
+
+    _log_usage(
+        cfg,
+        input_tokens,
+        output_tokens,
+        total_tokens,
+        prompt_eval_duration_ms,
+        eval_duration_ms,
+        total_duration_ms,
+        "json" if json_mode else "text",
+        temperature,
+        max_tokens,
+    )
+
+    return content
+
+
+def _call_guardrailed_or_raw(
+    system_prompt: str,
+    user_prompt: str,
+    temperature: float,
+    max_tokens: int,
+    json_mode: bool,
+) -> Optional[str]:
+    cfg = _get_db_llm_config()
+    lc_messages, rail_messages = _build_langchain_messages(system_prompt, user_prompt)
+
+    heuristic_reason = _detect_out_of_scope_prompt(user_prompt)
+    if heuristic_reason:
+        print(
+            "[LLM Service] Pre-guardrail heuristic triggered; returning refusal.",
+            f"reason={heuristic_reason}"
+        )
+        return OUT_OF_SCOPE_REFUSAL_MESSAGE
+
+    if guardrails_enabled(cfg):
+        print("[LLM Service] Guardrails flag is ON for this request.")
+        content = _call_with_guardrails(rail_messages, temperature, max_tokens, json_mode, cfg)
+        if content is not None:
+            print("[LLM Service] Guardrails satisfied request; raw LLM call skipped.")
+            return content
+        print("[LLM Service] Guardrails path returned None, falling back to raw LLM response.")
+    else:
+        print("[LLM Service] Guardrails flag is OFF — calling raw LLM directly.")
+
+    return _invoke_raw_llm(lc_messages, temperature, max_tokens, json_mode, cfg)
+
+
 @observe(name="call_llm_json", as_type="generation")
 def call_llm_json(
-    system_prompt: str, 
-    user_prompt: str, 
+    system_prompt: str,
+    user_prompt: str,
     temperature: float = 0.1,
-    max_tokens: int = 20000
+    max_tokens: int = 20000,
 ) -> Optional[Dict[str, Any]]:
-    """
-    Executes a structured JSON request using LangChain and tracks it with Langfuse.
-    """
-    cfg = _get_db_llm_config()
-    live_model = cfg.get('llm_model') or OVERRIDE_MODEL or cfg.get('ollama_model') or MODEL_NAME
-    print(f"[LLM Service] Calling Model (JSON): {live_model}")
-    
-    try:
-        llm = get_llm(temperature=temperature, max_tokens=max_tokens, json_mode=True)
-        
-        messages = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=user_prompt)
-        ]
-        
-        response = llm.invoke(messages)
-        content = response.content
-        
-        if not content:
-            print("[LLM Service] Empty content received.")
-            return None
-            
-        # Extract and log token usage
-        if response.response_metadata:
-            metadata = response.response_metadata
-            
-            # Ollama returns tokens directly in metadata, not in nested 'usage'
-            # Keys: prompt_eval_count (input), eval_count (output)
-            input_tokens = metadata.get('prompt_eval_count') or 0
-            output_tokens = metadata.get('eval_count') or 0
-            
-            # Fallback to nested 'usage' dict (for OpenAI-compatible providers)
-            if input_tokens == 0 and output_tokens == 0:
-                usage = metadata.get('usage', {})
-                input_tokens = usage.get('prompt_tokens') or usage.get('input_tokens') or 0
-                output_tokens = usage.get('completion_tokens') or usage.get('output_tokens') or 0
-            
-            total_tokens = input_tokens + output_tokens
-            
-            print(f"[LLM Stats] Input: {input_tokens}, Output: {output_tokens}, Total: {total_tokens}")
-            
-            # Send token usage to Langfuse with proper format for cost calculation
-            if LANGFUSE_ENABLED and langfuse_client:
-                try:
-                    langfuse_client.update_current_generation(
-                        model=MODEL_NAME,
-                        usage_details={
-                            "input": input_tokens,
-                            "output": output_tokens,
-                            "total": total_tokens
-                        },
-                        model_parameters={
-                            "temperature": temperature, 
-                            "max_tokens": max_tokens
-                        },
-                        metadata={"mode": "json"}
-                    )
-                except Exception as e:
-                    print(f"[Langfuse] Failed to update generation: {e}")
-        
-        return _parse_json_from_text(content)
-            
-    except Exception as e:
-        print(f"[LLM Service] JSON Call Error: {e}")
-        import traceback
-        traceback.print_exc()
+    content = _call_guardrailed_or_raw(system_prompt, user_prompt, temperature, max_tokens, json_mode=True)
+    if not content:
         return None
+    return _parse_json_from_text(content)
+
 
 @observe(name="call_llm", as_type="generation")
 def call_llm(
-    system_prompt: str, 
-    user_prompt: str, 
+    system_prompt: str,
+    user_prompt: str,
     temperature: float = 0.7,
-    max_tokens: int = 2000
+    max_tokens: int = 2000,
 ) -> Optional[str]:
-    """
-    Executes a standard chat request using LangChain and tracks it with Langfuse.
-    """
-    cfg = _get_db_llm_config()
-    live_model = cfg.get('llm_model') or OVERRIDE_MODEL or cfg.get('ollama_model') or MODEL_NAME
-    print(f"[LLM Service] Calling Model (Text): {live_model}")
-    
-    try:
-        llm = get_llm(temperature=temperature, max_tokens=max_tokens)
-        
-        messages = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=user_prompt)
-        ]
-        
-        response = llm.invoke(messages)
-        content = response.content
-        
-        if not content:
-            print("[LLM Service] Empty content received.")
-            return None
-        
-        # Extract and log token usage
-        if response.response_metadata:
-            metadata = response.response_metadata
-            
-            # Ollama returns tokens directly in metadata, not in nested 'usage'
-            # Keys: prompt_eval_count (input), eval_count (output)
-            input_tokens = metadata.get('prompt_eval_count') or 0
-            output_tokens = metadata.get('eval_count') or 0
-            
-            # Fallback to nested 'usage' dict (for OpenAI-compatible providers)
-            if input_tokens == 0 and output_tokens == 0:
-                usage = metadata.get('usage', {})
-                input_tokens = usage.get('prompt_tokens') or usage.get('input_tokens') or 0
-                output_tokens = usage.get('completion_tokens') or usage.get('output_tokens') or 0
-            
-            total_tokens = input_tokens + output_tokens
-            
-            print(f"[LLM Stats] Input: {input_tokens}, Output: {output_tokens}, Total: {total_tokens}")
-            
-            # Send token usage to Langfuse with proper format for cost calculation
-            if LANGFUSE_ENABLED and langfuse_client:
-                try:
-                    langfuse_client.update_current_generation(
-                        model=MODEL_NAME,
-                        usage_details={
-                            "input": input_tokens,
-                            "output": output_tokens,
-                            "total": total_tokens
-                        },
-                        model_parameters={
-                            "temperature": temperature, 
-                            "max_tokens": max_tokens
-                        },
-                        metadata={"mode": "text"}
-                    )
-                except Exception as e:
-                    print(f"[Langfuse] Failed to update generation: {e}")
-
-        return content
-            
-    except Exception as e:
-        print(f"[LLM Service] Text Call Error: {e}")
-        return None
+    return _call_guardrailed_or_raw(system_prompt, user_prompt, temperature, max_tokens, json_mode=False)
 
 
 def _generate_title_direct_ollama(first_message: str) -> str:
@@ -424,24 +684,21 @@ Title:"""
             timeout=60  # Increased from 30 to 60 seconds
         )
         
+        fallback = _fallback_title_from_text(first_message)
+
         if response.status_code == 200:
             result = response.json()
             title = result.get("response", "").strip()
-            
-            # Clean up the title
-            title = title.strip('"\'')
-            if len(title) > 50:
-                title = title[:47] + "..."
-            
-            print(f"[LLM Service] Direct Ollama title: {title}")
-            return title if title else "New Chat"
+            finalized = _finalize_title(title, fallback)
+            print(f"[LLM Service] Direct Ollama title: {finalized}")
+            return finalized
         else:
             print(f"[LLM Service] Direct Ollama API error: {response.status_code}")
-            return "New Chat"
+            return fallback
             
     except Exception as e:
         print(f"[LLM Service] Direct Ollama title generation error: {e}")
-        return "New Chat"
+        return _fallback_title_from_text(first_message)
 
 
 def generate_chat_title(first_message: str) -> str:
@@ -454,6 +711,8 @@ def generate_chat_title(first_message: str) -> str:
         cfg = _get_db_llm_config()
         live_provider = cfg.get('llm_provider') or LLM_PROVIDER
         live_model = cfg.get('llm_model') or OVERRIDE_MODEL or cfg.get('ollama_model') or MODEL_NAME
+        fallback = _fallback_title_from_text(first_message)
+
         # For remote Ollama models, use direct API call to avoid LangChain issues
         if live_provider == "ollama" and "cloud" in live_model:
             return _generate_title_direct_ollama(first_message)
@@ -477,17 +736,11 @@ Title:"""
         messages = [HumanMessage(content=prompt)]
         response = llm.invoke(messages)
         title = response.content.strip()
-        
-        # Clean up the title
-        title = title.strip('"\'')
-        if len(title) > 50:
-            title = title[:47] + "..."
-        
-        return title if title else "New Chat"
+        return _finalize_title(title, fallback)
         
     except Exception as e:
         print(f"[LLM Service] Title generation error: {e}")
-        return "New Chat"
+        return _fallback_title_from_text(first_message)
 
 
 def _generate_refined_title_direct_ollama(history: List[Dict[str, str]]) -> str:
@@ -537,34 +790,21 @@ Title:"""
             timeout=60  # Increased from 30 to 60 seconds
         )
         
+        fallback = _fallback_title_from_text(_history_fallback_text(history))
+
         if response.status_code == 200:
             result = response.json()
             title = result.get("response", "").strip()
-            
-            # Remove "Title:" prefix if present
-            if title.lower().startswith("title:"):
-                title = title[6:].strip()
-                
-            # Clean up quotes
-            title = title.strip('"\'')
-            
-            # Final Fallback check
-            if not title:
-                print("[LLM Service] Empty refined title generated. Using fallback.")
-                return "Active Chat"
-                
-            if len(title) > 50:
-                title = title[:47] + "..."
-                
-            print(f"[LLM Service] Direct Ollama refined title: {title}")
-            return title
+            finalized = _finalize_title(title, fallback)
+            print(f"[LLM Service] Direct Ollama refined title: {finalized}")
+            return finalized
         else:
             print(f"[LLM Service] Direct Ollama API error for refined title: {response.status_code}")
-            return "New Chat"
+            return fallback
             
     except Exception as e:
         print(f"[LLM Service] Direct Ollama refined title generation error: {e}")
-        return "New Chat"
+        return _fallback_title_from_text(_history_fallback_text(history))
 
 
 def generate_comprehensive_chat_title(history: List[Dict[str, str]]) -> str:
@@ -587,6 +827,7 @@ def generate_comprehensive_chat_title(history: List[Dict[str, str]]) -> str:
         # Extract all user questions for comprehensive analysis
         user_questions = [msg['content'] for msg in history if msg['role'] == 'user']
         conversation_summary = "\n".join([f"Q{i+1}: {q}" for i, q in enumerate(user_questions)])
+        fallback = _fallback_title_from_text(_history_fallback_text(history))
         
         prompt = f"""Analyze all these questions from a conversation and create a comprehensive 5-word title that captures the overall theme.
 
@@ -605,17 +846,11 @@ Title:"""
         messages = [HumanMessage(content=prompt)]
         response = llm.invoke(messages)
         title = response.content.strip()
-        
-        # Clean up the title
-        title = title.strip('"\'')
-        if len(title) > 50:
-            title = title[:47] + "..."
-        
-        return title if title else "Active Chat"
+        return _finalize_title(title, fallback)
         
     except Exception as e:
         print(f"[LLM Service] Comprehensive title generation error: {e}")
-        return "Active Chat"
+        return _fallback_title_from_text(_history_fallback_text(history))
 
 
 def _generate_comprehensive_title_direct_ollama(history: List[Dict[str, str]]) -> str:
@@ -661,25 +896,21 @@ Title:"""
             timeout=60  # Increased from 30 to 60 seconds
         )
         
+        fallback = _fallback_title_from_text(_history_fallback_text(history))
+
         if response.status_code == 200:
             result = response.json()
             title = result.get("response", "").strip()
-            
-            # Clean up quotes
-            title = title.strip('"\'')
-            
-            if len(title) > 50:
-                title = title[:47] + "..."
-                
-            print(f"[LLM Service] Direct Ollama comprehensive title: {title}")
-            return title
+            finalized = _finalize_title(title, fallback)
+            print(f"[LLM Service] Direct Ollama comprehensive title: {finalized}")
+            return finalized
         else:
             print(f"[LLM Service] Direct Ollama API error for comprehensive title: {response.status_code}")
-            return "Active Chat"
+            return fallback
             
     except Exception as e:
         print(f"[LLM Service] Direct Ollama comprehensive title generation error: {e}")
-        return "Active Chat"
+        return _fallback_title_from_text(_history_fallback_text(history))
 
 
 def generate_refined_chat_title(history: List[Dict[str, str]]) -> str:
@@ -730,33 +961,18 @@ Title:"""
             HumanMessage(content=prompt)
         ]
         
+        fallback = _fallback_title_from_text(_history_fallback_text(history))
         response = llm.invoke(messages)
         raw_content = response.content.strip()
         print(f"[LLM Service] Raw Refined Title Response: '{raw_content}'")
         
-        title = raw_content
-        
-        # Remove "Title:" prefix if present
-        if title.lower().startswith("title:"):
-            title = title[6:].strip()
-            
-        # Clean up quotes
-        title = title.strip('"\'')
-        
-        # Final Fallback check
-        if not title:
-            print("[LLM Service] Empty title generated. Using fallback.")
-            return "Active Chat" # Better than "New Chat" to show some state change
-            
-        if len(title) > 50:
-            title = title[:47] + "..."
-            
+        title = _finalize_title(raw_content, fallback)
         print(f"[LLM Service] Final Refined Title: {title}")
         return title
         
     except Exception as e:
         print(f"[LLM Service] Refined title generation error: {e}")
-        return "New Chat"
+        return _fallback_title_from_text(_history_fallback_text(history))
 
 
 def _parse_json_from_text(text: str) -> Optional[Dict]:

@@ -108,6 +108,15 @@ async def chat_with_coach(
             custom_content=response_data.get("custom_content"),
             session_id=session_id
         ))
+
+        # If this session is still unnamed, generate a title immediately so the UI can display it
+        if should_generate_title and chat_session.title == "New Chat":
+            try:
+                generated_title = generate_chat_title(request.message)
+                if generated_title:
+                    chat_session.title = generated_title
+            except Exception as e:
+                print(f"[Chat API] Immediate title generation failed for {session_id}: {e}")
         
         # Update session timestamp
         chat_session.updated_at = datetime.utcnow()
@@ -119,7 +128,7 @@ async def chat_with_coach(
         message_count = db.query(ChatHistory).filter(ChatHistory.session_id == session_id).count()
         
         trigger_mode = None
-        if message_count <= 3 and (is_new_session or chat_session.title == "New Chat"):
+        if message_count <= 3 and chat_session.title == "New Chat":
             # Initial title generation for new sessions
             trigger_mode = "initial"
         elif 4 <= message_count <= 5:

@@ -68,10 +68,6 @@ def get_current_workout(
     if not plan:
         raise HTTPException(status_code=404, detail="Workout plan not found")
 
-    print(f"[FEAST-INJECT] User {current_user.id} — fetching workout plan")
-    print(f"[FEAST-INJECT] Schedule keys: {list(plan.weekly_schedule.keys()) if plan.weekly_schedule else 'NONE'}")
-    print(f"[FEAST-INJECT] Day names in schedule: {[v.get('day_name') for v in plan.weekly_schedule.values()] if plan.weekly_schedule else 'NONE'}")
-        
     # Inject Feast Mode Workout if active
     try:
         feast_manager = FeastModeManager(db)
@@ -80,7 +76,6 @@ def get_current_workout(
              plan.weekly_schedule = updated_schedule
              
     except Exception as e:
-        print(f"[FEAST-INJECT] ERROR: {e}")
         traceback.print_exc()
         
     return plan

@@ -76,6 +76,7 @@ services:
     volumes:
       # Mount source code for hot-reload
       - ./backend:/app
+      - ./scripts:/app/scripts
       # Prevent local venv from overriding container packages
       - /app/venv
       - /app/venv313

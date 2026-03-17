@@ -84,6 +84,13 @@ DEFAULT_SETTINGS = [
         "category": "llm",
         "is_sensitive": True,
     },
+    {
+        "key": "guardrails_enabled",
+        "value_env": lambda: os.getenv("GUARDRAILS_ENABLED", "false"),
+        "description": "Enable Nemoguardrails safety flows for the AI Coach",
+        "category": "llm",
+        "is_sensitive": False,
+    },
     # Observability
     {
         "key": "langfuse_host",

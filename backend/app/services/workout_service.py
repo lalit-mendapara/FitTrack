@@ -1,4 +1,5 @@
 
+import sys
 import json
 import logging
 import re
@@ -6,6 +7,14 @@ from difflib import get_close_matches
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from datetime import date
+
+# Langfuse tracing
+observe = lambda *args, **kwargs: (lambda f: f)  # No-op decorator fallback
+if sys.version_info < (3, 14):
+    try:
+        from langfuse import observe
+    except ImportError:
+        pass
 
 from app.models.user_profile import UserProfile
 from app.models.workout_plan import WorkoutPlan
@@ -86,6 +95,7 @@ def get_exercises_by_experience(db: Session, experience_level: str) -> List[Exer
         
     return db.query(Exercise).filter(Exercise.difficulty.in_(allowed)).limit(100).all()
 
+@observe(name="generate_workout_plan", as_type="generation")
 def generate_workout_plan(db: Session, request_data: WorkoutPlanRequestData):
     """
     Main orchestrator for workout plan generation.

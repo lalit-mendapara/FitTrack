@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 import os
 from app.database import engine,Base
 import app.models
-from app.api import users,user_profile,meal_plan,login,workout_plan,workout_preferences,chat,tracking
+from app.api import users,user_profile,meal_plan,login,workout_plan,workout_preferences,chat,tracking,workout_plan_async
 from app.api.admin import auth as admin_auth, users as admin_users, analytics as admin_analytics, foods as admin_foods, exercises as admin_exercises, feasts as admin_feasts, settings as admin_settings
 import logging
 
@@ -73,6 +73,7 @@ app.include_router(user_profile.router)
 app.include_router(meal_plan.router)
 app.include_router(workout_preferences.router)
 app.include_router(workout_plan.router)
+app.include_router(workout_plan_async.router)  # Async workout generation
 app.include_router(chat.router)
 app.include_router(tracking.router, prefix="/tracking", tags=["Tracking"])
 from app.api import notifications

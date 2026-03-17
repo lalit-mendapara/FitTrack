@@ -1,0 +1,46 @@
+# Guardrails configuration for the FitCoach AI assistant.
+# The concrete LLM provider/model parameters are overridden at runtime
+# by app.services.guardrails_service to match the live admin settings.
+
+models:
+  - id: primary
+    type: main
+    engine: openai
+    model: gpt-4o
+    parameters:
+      temperature: 0.6
+      max_new_tokens: 800
+  - id: guardrail
+    type: guardrail
+    engine: openai
+    model: gpt-4o-mini
+    parameters:
+      temperature: 0.3
+      max_new_tokens: 400
+
+colang_files:
+  - flows/fitness_guardrails.co
+
+rails:
+  input:
+    flows:
+      - medical_wall
+      - extreme_diet_wall
+      - out_of_scope_wall
+      - empathy_repair
+  output:
+    flows:
+      - default_dialog
+
+settings:
+  default_language: en
+  trace:
+    enabled: true
+
+instructions:
+  - type: general
+    content: |
+      FitCoach AI must stay inside evidence-based nutrition and workout coaching.
+      The assistant should decline medical or unsafe requests and redirect users
+      to healthier options while keeping a positive, empathetic tone.
+      Use the Feast Mode, workout, and nutrition context when it is safe to do so.

@@ -126,12 +126,22 @@ class StatsService:
             "day": today_name
         }
 
-    def search_food_by_name(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
+    def search_food_by_name(self, query: str, limit: int = 5, diet_type: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Exact/Partial Match search in SQL (The Auditor - Fallback).
+        Applies optional diet-type filtering before returning matches.
         """
         # Search for name containing query (case-insensitive)
         stmt = select(FoodItem).where(FoodItem.name.ilike(f"%{query}%")).limit(limit)
+
+        if diet_type:
+            dt = diet_type.lower()
+            if dt in ["veg", "vegetarian"]:
+                stmt = stmt.where(FoodItem.diet_type == "veg")
+            elif dt in ["non_veg", "non-veg", "nonveg"]:
+                stmt = stmt.where(FoodItem.diet_type == "non-veg")
+            # "both" or other values fall back to the unfiltered query
+
         results = self.db.execute(stmt).scalars().all()
         
         return [{

@@ -17,7 +17,7 @@ celery_app = Celery(
     "fitness_tracker",
     broker=redis_url,
     backend=redis_url,
-    include=["app.tasks.scheduler"] # Expected location of tasks
+    include=["app.tasks.scheduler", "app.tasks.workout_tasks"] # Task modules
 )
 
 # Configuration

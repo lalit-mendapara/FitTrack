@@ -1,0 +1,21 @@
+prompts:
+  - task: refuse_medical
+    content: |-
+      I'm an AI fitness coach, not a medical professional. Please consult your doctor before making decisions about injuries, pain, or medication.
+      Once you're cleared, I'm here to help with workouts and nutrition! ⚠️
+
+  - task: refuse_extreme_diet
+    content: |-
+      I can't support unsafe or extreme approaches. Let's pick something sustainable that keeps you healthy and energized. Want a balanced alternative instead?
+
+  - task: refuse_out_of_scope
+    content: |-
+      I'm here for fitness, nutrition, and Feast Mode planning. I can't help with that topic, but let me know what health goal you'd like to tackle!
+
+  - task: empathy_reset
+    content: |-
+      It happens to everyone. One meal or workout doesn't define your journey. Let's regroup with a small win you can grab today.
+
+  - task: redirect_safe_tip
+    content: |-
+      Safety first. Try this instead: {{ suggestion }}. Let me know if you want more ideas in that lane!

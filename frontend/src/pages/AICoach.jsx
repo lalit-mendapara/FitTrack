@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Send, Bot, User, Loader2, History, Plus, MessageSquare, Copy, Check, MoreVertical, Pencil, Trash2, X, Drumstick, Utensils, Dumbbell, BatteryLow, TrendingUp, Target, PanelRight } from 'lucide-react';
 import { chatWithCoach, getChatHistory, getChatSessions, deleteSession, renameSession, addChatMessage, updateChatMessage, deleteChatMessage } from '../api/chat';
@@ -48,11 +48,9 @@ const AICoach = () => {
     const [showRightPanel, setShowRightPanel] = useState(false);
 
     // Menu & Edit State
-    const [activeMenu, setActiveMenu] = useState(null);
     const [editingSession, setEditingSession] = useState(null);
     const [editTitle, setEditTitle] = useState('');
     const [deleteConfirm, setDeleteConfirm] = useState(null);
-    const menuRef = useRef(null);
 
     const scrollRef = useRef(null);
     const inputRef = useRef(null);
@@ -322,6 +320,11 @@ const AICoach = () => {
             // Store real proposal data for the right panel
             setActivationProposal(proposalData);
 
+            // Auto-open mobile panel on small screens when activating
+            if (window.innerWidth < 1024) {
+                setShowRightPanel(true);
+            }
+
             // Trigger right panel activation animation
             setFeastActivating(true);
 
@@ -335,7 +338,10 @@ const AICoach = () => {
         }
     };
 
-    const handleFeastActivationComplete = async () => {
+    const handleFeastActivationComplete = useCallback(async () => {
+        // Prevent duplicate execution (called by both desktop and mobile panels)
+        if (!activationProposal) return;
+        
         // Send final confirmation message in chat using real proposal data
         const banked = activationProposal?.total_banked ?? activationProposal?.daily_deduction * activationProposal?.days_remaining ?? 750;
         const confirmText = `🎉 **Feast Mode is now active!** Your ${banked} kcal bank is confirmed. On party day, forget calorie counting — just enjoy! I'll remind you with a meal plan the morning of. You've got this! 💪`;
@@ -346,7 +352,18 @@ const AICoach = () => {
             text: confirmText,
             timestamp: new Date().toISOString()
         }]);
-    };
+        
+        // Clear activation state to prevent re-execution
+        setActivationProposal(null);
+        setFeastActivating(false);
+        
+        // Auto-collapse mobile panel after animation (small screens only)
+        if (window.innerWidth < 1024) {
+            setTimeout(() => {
+                setShowRightPanel(false);
+            }, 1500); // Wait 1.5s after animation completes
+        }
+    }, [activationProposal, sessionId]);
 
     const handleCancelFeast = async () => {
         setFeastLoading(true);
@@ -584,19 +601,6 @@ const AICoach = () => {
         loadSpecificSession(sid);
     };
 
-    // Close menu on outside click
-    useEffect(() => {
-        const handleClickOutside = (e) => {
-            if (menuRef.current && !menuRef.current.contains(e.target)) {
-                setActiveMenu(null);
-            }
-        };
-        if (activeMenu) {
-            document.addEventListener('mousedown', handleClickOutside);
-        }
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, [activeMenu]);
-
     // Handle Delete Session
     const handleDeleteSession = async (sid) => {
         try {
@@ -611,7 +615,6 @@ const AICoach = () => {
             toast.error("Failed to delete chat");
         } finally {
             setDeleteConfirm(null);
-            setActiveMenu(null);
         }
     };
 
@@ -639,7 +642,6 @@ const AICoach = () => {
     const startEditing = (s) => {
         setEditingSession(s.session_id);
         setEditTitle(s.title || '');
-        setActiveMenu(null);
     };
 
     const handleBackToSetup = (proposalData) => {
@@ -800,10 +802,10 @@ const AICoach = () => {
                                 sessions.map((session) => (
                                     <div
                                         key={session.session_id}
-                                        className={`relative p-3 rounded-lg transition-all ${
+                                        className={`relative group p-3 rounded-xl border transition-all ${
                                             session.session_id === sessionId
-                                                ? 'bg-indigo-50 border border-indigo-200'
-                                                : 'bg-white hover:bg-gray-100 border border-gray-200'
+                                                ? 'bg-indigo-50 border-indigo-200 shadow-sm'
+                                                : 'bg-white border-gray-200 hover:border-indigo-100 hover:bg-indigo-50/30'
                                         }`}
                                     >
                                         {deleteConfirm === session.session_id ? (
@@ -830,27 +832,32 @@ const AICoach = () => {
                                             </div>
                                         ) : (
                                             <div className="flex items-start gap-2">
-                                                <button onClick={() => handleSwitchSession(session.session_id)} className="flex-1 text-left">
+                                                <button
+                                                    onClick={() => handleSwitchSession(session.session_id)}
+                                                    className="flex-1 text-left pr-14"
+                                                >
                                                     <p className="text-xs text-gray-500 mb-1">{new Date(session.last_active).toLocaleDateString()}</p>
                                                     <p className="text-sm font-medium text-gray-900 truncate">{session.title || `Session ${session.session_id.slice(0, 8)}...`}</p>
                                                 </button>
-                                                <div className="relative" ref={activeMenu === session.session_id ? menuRef : null}>
+                                                <div className="absolute top-2.5 right-2.5 flex items-center gap-1 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity">
                                                     <button
-                                                        onClick={(e) => { e.stopPropagation(); setActiveMenu(activeMenu === session.session_id ? null : session.session_id); }}
-                                                        className="p-1.5 rounded-full hover:bg-gray-200 text-gray-400 hover:text-gray-600 transition-colors"
+                                                        type="button"
+                                                        onClick={(e) => { e.stopPropagation(); startEditing(session); }}
+                                                        title="Rename chat"
+                                                        className="p-1.5 rounded-full border border-indigo-100 text-indigo-600 hover:bg-indigo-500 hover:text-white transition-colors"
                                                     >
-                                                        <MoreVertical size={16} />
+                                                        <Pencil size={13} />
+                                                        <span className="sr-only">Rename chat</span>
                                                     </button>
-                                                    {activeMenu === session.session_id && (
-                                                        <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-30 min-w-30">
-                                                            <button onClick={(e) => { e.stopPropagation(); startEditing(session); }} className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-gray-50 text-gray-700">
-                                                                <Pencil size={14} /> Rename
-                                                            </button>
-                                                            <button onClick={(e) => { e.stopPropagation(); setDeleteConfirm(session.session_id); setActiveMenu(null); }} className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-red-50 text-red-600">
-                                                                <Trash2 size={14} /> Delete
-                                                            </button>
-                                                        </div>
-                                                    )}
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => { e.stopPropagation(); setDeleteConfirm(session.session_id); }}
+                                                        title="Delete chat"
+                                                        className="p-1.5 rounded-full border border-red-100 text-red-600 hover:bg-red-500 hover:text-white transition-colors"
+                                                    >
+                                                        <Trash2 size={13} />
+                                                        <span className="sr-only">Delete chat</span>
+                                                    </button>
                                                 </div>
                                             </div>
                                         )}
