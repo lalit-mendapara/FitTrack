@@ -171,11 +171,14 @@ You are a professional Fitness Coach creating a personalized workout plan.
 - {muscle_context}
 {existing_plan_context}
 
-# TASK
-Create a 7-day weekly schedule with exactly {prefs.days_per_week} workout days.
-Custom instructions: "{custom_prompt if custom_prompt else 'None'}"
+    # TASK
+    Create a 7-day weekly schedule with exactly {prefs.days_per_week} workout days.
+    Custom instructions: "{custom_prompt if custom_prompt else 'None'}"
 
-{social_context}
+    # USER FEEDBACK MARKER (Used by guardrails heuristics to isolate real user intent)
+    CURRENT USER MESSAGE: "{custom_prompt if custom_prompt else 'Please craft a personalized workout plan for me.'}"
+
+    {social_context}
 
 # WEEKLY DAY ORDER (CRITICAL)
 {day_mapping_lines}

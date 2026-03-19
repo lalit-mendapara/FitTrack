@@ -498,8 +498,8 @@ const WorkoutPlan = ({ isEmbedded = false, onPlanGenerated }) => {
   
 
 
-  const [isCardioOpen, setIsCardioOpen] = useState(true);
-  const [isProgressionOpen, setIsProgressionOpen] = useState(true);
+  const [isCardioOpen, setIsCardioOpen] = useState(false);
+  const [isProgressionOpen, setIsProgressionOpen] = useState(false);
 
   // Auto-collapse on mobile initially
 
@@ -639,7 +639,7 @@ const WorkoutPlan = ({ isEmbedded = false, onPlanGenerated }) => {
                              </div>
                          </div>
                          
-                         <div className={`transition-all duration-300 overflow-hidden md:max-h-200 md:opacity-100 md:mt-2 ${isCardioOpen ? 'max-h-200 opacity-100 mt-2' : 'max-h-0 opacity-0'}`}>
+                         <div className={`transition-all duration-300 overflow-hidden ${isCardioOpen ? 'max-h-200 opacity-100 mt-2' : 'max-h-0 opacity-0'} md:max-h-200 md:opacity-100 md:mt-2`}>
                              <ul className="space-y-3">
                                 {plan.cardio_recommendations && plan.cardio_recommendations.length > 0 ? (
                                     plan.cardio_recommendations.map((item, idx) => (
@@ -675,7 +675,7 @@ const WorkoutPlan = ({ isEmbedded = false, onPlanGenerated }) => {
                              </div>
                          </div>
                          
-                         <div className={`transition-all duration-300 overflow-hidden md:max-h-200 md:opacity-100 md:mt-2 ${isProgressionOpen ? 'max-h-200 opacity-100 mt-2' : 'max-h-0 opacity-0'}`}>
+                         <div className={`transition-all duration-300 overflow-hidden ${isProgressionOpen ? 'max-h-200 opacity-100 mt-2' : 'max-h-0 opacity-0'} md:max-h-200 md:opacity-100 md:mt-2`}>
                              <ul className="space-y-3">
                                 {plan.progression_guidelines && plan.progression_guidelines.length > 0 ? (
                                     plan.progression_guidelines.map((item, idx) => (

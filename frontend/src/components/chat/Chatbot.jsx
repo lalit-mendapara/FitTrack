@@ -463,7 +463,7 @@ const Chatbot = () => {
                                 sessions.map((s) => (
                                     <div 
                                         key={s.session_id}
-                                        className={`relative w-full p-3 rounded-lg text-sm transition-colors flex items-center gap-2
+                                        className={`relative w-full p-3 rounded-lg text-sm transition-colors flex items-center gap-2 group
                                             ${sessionId === s.session_id 
                                                 ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-800' 
                                                 : 'hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-600 dark:text-gray-300 border border-transparent'
@@ -527,19 +527,19 @@ const Chatbot = () => {
                                                     </div>
                                                 </button>
                                                 
-                                                {/* 3-Dot Menu */}
+                                                {/* 3-Dot Menu - Always visible on mobile, hover on desktop */}
                                                 <div className="relative" ref={activeMenu === s.session_id ? menuRef : null}>
                                                     <button
                                                         onClick={(e) => {
                                                             e.stopPropagation();
                                                             setActiveMenu(activeMenu === s.session_id ? null : s.session_id);
                                                         }}
-                                                        className="p-1.5 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+                                                        className="p-2 rounded-full hover:bg-emerald-100 dark:hover:bg-emerald-900 text-emerald-600 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300 transition-colors bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-700"
                                                     >
-                                                        <MoreVertical size={14} />
+                                                        <MoreVertical size={16} />
                                                     </button>
                                                     
-                                                    {/* Dropdown Menu */}
+                                                    {/* Dropdown Menu - Positioned for better mobile access */}
                                                     {activeMenu === s.session_id && (
                                                         <div className="absolute right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 z-30 min-w-30 animate-in fade-in slide-in-from-top-1">
                                                             <button

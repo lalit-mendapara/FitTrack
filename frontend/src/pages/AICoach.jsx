@@ -37,6 +37,7 @@ const AICoach = () => {
     const [feastLoading, setFeastLoading] = useState(false);
     const [feastActivating, setFeastActivating] = useState(false);
     const [activationProposal, setActivationProposal] = useState(null);
+    const [completionHandled, setCompletionHandled] = useState(false);
 
     // History State
     const [showHistory, setShowHistory] = useState(false);
@@ -48,10 +49,12 @@ const AICoach = () => {
     const [showRightPanel, setShowRightPanel] = useState(false);
 
     // Menu & Edit State
+    const [activeMenu, setActiveMenu] = useState(null);
     const [editingSession, setEditingSession] = useState(null);
     const [editTitle, setEditTitle] = useState('');
     const [deleteConfirm, setDeleteConfirm] = useState(null);
 
+    const menuRef = useRef(null);
     const scrollRef = useRef(null);
     const inputRef = useRef(null);
 
@@ -80,6 +83,23 @@ const AICoach = () => {
         scrollToBottom();
         setTimeout(() => inputRef.current?.focus(), 100);
     }, [messages]);
+
+    // Close menu when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (menuRef.current && !menuRef.current.contains(event.target)) {
+                setActiveMenu(null);
+            }
+        };
+
+        if (activeMenu) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [activeMenu]);
 
     const checkFeastStatus = async () => {
         try {
@@ -327,6 +347,7 @@ const AICoach = () => {
 
             // Trigger right panel activation animation
             setFeastActivating(true);
+            setCompletionHandled(false); // Reset completion flag for new activation
 
             // Refresh Status
             await checkFeastStatus();
@@ -339,8 +360,11 @@ const AICoach = () => {
     };
 
     const handleFeastActivationComplete = useCallback(async () => {
-        // Prevent duplicate execution (called by both desktop and mobile panels)
-        if (!activationProposal) return;
+        // Prevent duplicate execution
+        if (!activationProposal || completionHandled) return;
+        
+        // Mark as handled immediately to prevent race conditions
+        setCompletionHandled(true);
         
         // Send final confirmation message in chat using real proposal data
         const banked = activationProposal?.total_banked ?? activationProposal?.daily_deduction * activationProposal?.days_remaining ?? 750;
@@ -363,7 +387,7 @@ const AICoach = () => {
                 setShowRightPanel(false);
             }, 1500); // Wait 1.5s after animation completes
         }
-    }, [activationProposal, sessionId]);
+    }, [activationProposal, sessionId, completionHandled]);
 
     const handleCancelFeast = async () => {
         setFeastLoading(true);
@@ -781,17 +805,17 @@ const AICoach = () => {
 
                 {/* History Sidebar (overlay) */}
                 {showHistory && (
-                    <div className="w-72 border-r border-gray-200 bg-gray-50 flex flex-col shrink-0 z-20">
-                        <div className="p-4 border-b border-gray-200 bg-white flex items-center justify-between">
+                    <div className="w-72 border-r border-gray-200 bg-gray-50 flex flex-col shrink-0 z-20 overflow-hidden">
+                        <div className="p-4 border-b border-gray-200 bg-white flex items-center justify-between flex-shrink-0">
                             <h3 className="font-semibold text-gray-900 flex items-center gap-2 text-sm">
-                                <MessageSquare className="w-4 h-4" />
+                                <MessageSquare className="w-4 h-4 shrink-0" />
                                 Chat History
                             </h3>
-                            <button onClick={() => setShowHistory(false)} className="p-1 hover:bg-gray-100 rounded">
+                            <button onClick={() => setShowHistory(false)} className="p-1 hover:bg-gray-100 rounded flex-shrink-0">
                                 <X size={16} className="text-gray-400" />
                             </button>
                         </div>
-                        <div className="flex-1 overflow-y-auto p-3 space-y-2">
+                        <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 space-y-2">
                             {historyLoading ? (
                                 <div className="flex justify-center py-8">
                                     <Loader2 className="w-6 h-6 animate-spin text-indigo-600" />
@@ -802,7 +826,7 @@ const AICoach = () => {
                                 sessions.map((session) => (
                                     <div
                                         key={session.session_id}
-                                        className={`relative group p-3 rounded-xl border transition-all ${
+                                        className={`relative group p-3 rounded-xl border transition-all w-full min-w-0 ${
                                             session.session_id === sessionId
                                                 ? 'bg-indigo-50 border-indigo-200 shadow-sm'
                                                 : 'bg-white border-gray-200 hover:border-indigo-100 hover:bg-indigo-50/30'
@@ -834,30 +858,55 @@ const AICoach = () => {
                                             <div className="flex items-start gap-2">
                                                 <button
                                                     onClick={() => handleSwitchSession(session.session_id)}
-                                                    className="flex-1 text-left pr-14"
+                                                    className="flex-1 text-left pr-12 min-w-0 overflow-hidden"
                                                 >
                                                     <p className="text-xs text-gray-500 mb-1">{new Date(session.last_active).toLocaleDateString()}</p>
                                                     <p className="text-sm font-medium text-gray-900 truncate">{session.title || `Session ${session.session_id.slice(0, 8)}...`}</p>
                                                 </button>
-                                                <div className="absolute top-2.5 right-2.5 flex items-center gap-1 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity">
+                                                
+                                                {/* 3-Dot Menu - Always visible on all devices */}
+                                                <div className="absolute top-2.5 right-2.5" ref={activeMenu === session.session_id ? menuRef : null}>
                                                     <button
                                                         type="button"
-                                                        onClick={(e) => { e.stopPropagation(); startEditing(session); }}
-                                                        title="Rename chat"
-                                                        className="p-1.5 rounded-full border border-indigo-100 text-indigo-600 hover:bg-indigo-500 hover:text-white transition-colors"
+                                                        onClick={(e) => { 
+                                                            e.stopPropagation(); 
+                                                            setActiveMenu(activeMenu === session.session_id ? null : session.session_id); 
+                                                        }}
+                                                        className="p-1.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                                                        title="More options"
                                                     >
-                                                        <Pencil size={13} />
-                                                        <span className="sr-only">Rename chat</span>
+                                                        <MoreVertical size={14} />
                                                     </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={(e) => { e.stopPropagation(); setDeleteConfirm(session.session_id); }}
-                                                        title="Delete chat"
-                                                        className="p-1.5 rounded-full border border-red-100 text-red-600 hover:bg-red-500 hover:text-white transition-colors"
-                                                    >
-                                                        <Trash2 size={13} />
-                                                        <span className="sr-only">Delete chat</span>
-                                                    </button>
+                                                    
+                                                    {/* Dropdown Menu */}
+                                                    {activeMenu === session.session_id && (
+                                                        <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50 min-w-32 max-w-48 animate-in fade-in slide-in-from-top-1 overflow-hidden">
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => { 
+                                                                    e.stopPropagation(); 
+                                                                    startEditing(session); 
+                                                                    setActiveMenu(null);
+                                                                }}
+                                                                className="w-full px-3 py-2 text-left text-xs flex items-center gap-2 hover:bg-gray-50 text-gray-700 transition-colors"
+                                                            >
+                                                                <Pencil size={12} />
+                                                                Rename
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => { 
+                                                                    e.stopPropagation(); 
+                                                                    setDeleteConfirm(session.session_id); 
+                                                                    setActiveMenu(null);
+                                                                }}
+                                                                className="w-full px-3 py-2 text-left text-xs flex items-center gap-2 hover:bg-red-50 text-red-600 transition-colors"
+                                                            >
+                                                                <Trash2 size={12} />
+                                                                Delete
+                                                            </button>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
                                         )}
@@ -908,7 +957,10 @@ const AICoach = () => {
                                     <div
                                         className="aicoach-bubble"
                                         style={{
-                                            borderRadius: 16,
+                                            borderTopLeftRadius: 16,
+                                            borderTopRightRadius: 16,
+                                            borderBottomLeftRadius: 16,
+                                            borderBottomRightRadius: 16,
                                             fontSize: 13,
                                             lineHeight: 1.55,
                                             wordBreak: 'break-word',
@@ -1098,7 +1150,7 @@ const AICoach = () => {
                 {/* Desktop panel (always visible, part of flex layout) */}
                 <div className="feast-panel-desktop">
                     <FeastModePanel
-                        isActivating={feastActivating}
+                        isActivating={feastActivating && window.innerWidth >= 1024}
                         proposalData={activationProposal}
                         feastStatus={feastStatus}
                         onActivationComplete={handleFeastActivationComplete}
@@ -1121,7 +1173,7 @@ const AICoach = () => {
                         </button>
                     </div>
                     <FeastModePanel
-                        isActivating={feastActivating}
+                        isActivating={feastActivating && showRightPanel}
                         proposalData={activationProposal}
                         feastStatus={feastStatus}
                         onActivationComplete={handleFeastActivationComplete}

@@ -601,13 +601,16 @@ def _call_guardrailed_or_raw(
     cfg = _get_db_llm_config()
     lc_messages, rail_messages = _build_langchain_messages(system_prompt, user_prompt)
 
-    heuristic_reason = _detect_out_of_scope_prompt(user_prompt)
-    if heuristic_reason:
-        print(
-            "[LLM Service] Pre-guardrail heuristic triggered; returning refusal.",
-            f"reason={heuristic_reason}"
-        )
-        return OUT_OF_SCOPE_REFUSAL_MESSAGE
+    # Skip out-of-scope detection for structured JSON generation prompts
+    # These prompts contain numbers and exercise data that can falsely trigger math expression detection
+    if not json_mode:
+        heuristic_reason = _detect_out_of_scope_prompt(user_prompt)
+        if heuristic_reason:
+            print(
+                "[LLM Service] Pre-guardrail heuristic triggered; returning refusal.",
+                f"reason={heuristic_reason}"
+            )
+            return OUT_OF_SCOPE_REFUSAL_MESSAGE
 
     if guardrails_enabled(cfg):
         print("[LLM Service] Guardrails flag is ON for this request.")

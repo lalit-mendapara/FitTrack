@@ -56,8 +56,8 @@ const FeastModeBanner = ({ event, onUpdate }) => {
                             </div>
                         </div>
                         
-                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                            <div className="flex items-center gap-3 bg-gray-50 px-3 py-2 rounded-xl border border-gray-100 justify-center">
+                        <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-xl border border-gray-100 justify-center flex-1">
                                 <div className="text-center">
                                     <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Total Banked</p>
                                     <p className="text-lg sm:text-xl font-black text-indigo-600">
@@ -73,7 +73,7 @@ const FeastModeBanner = ({ event, onUpdate }) => {
                                 disabled={loading}
                                 className="flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-xl transition-colors disabled:opacity-50 shrink-0"
                             >
-                                <XCircle size={16} /> Cancel
+                                <XCircle size={16} /> <span className="hidden sm:inline">Cancel</span>
                             </button>
                         </div>
                     </div>
@@ -120,8 +120,8 @@ const FeastModeBanner = ({ event, onUpdate }) => {
                         </div>
                     </div>
                     
-                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 relative z-10">
-                        <div className="flex items-center gap-3 bg-linear-to-br from-orange-50 to-amber-50 px-3 py-2 rounded-xl border border-orange-200 justify-center">
+                    <div className="flex items-center gap-3 relative z-10">
+                        <div className="flex items-center gap-2 bg-linear-to-br from-orange-50 to-amber-50 px-3 py-2 rounded-xl border border-orange-200 justify-center flex-1">
                             <div className="text-center">
                                 <p className="text-xs text-orange-600 font-bold uppercase tracking-wider">Bonus Calories</p>
                                 <p className="text-lg sm:text-xl font-black text-orange-600">

@@ -212,6 +212,9 @@ def generate_workout_plan(db: Session, request_data: WorkoutPlanRequestData):
     1. Align with the user's goal ({profile.fitness_goal}) and experience level.
     2. Include specific warm-up and regular cardio on workout days.
     3. Adapt to user feedback: "{custom_prompt if custom_prompt else 'None'}"
+
+    # USER FEEDBACK MARKER (Used by guardrails heuristics to isolate real user intent)
+    CURRENT USER MESSAGE: "{custom_prompt if custom_prompt else 'Please craft a personalized workout plan for me.'}"
     
     {social_context}
 
