@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Apple, Clock, Flame, Loader2, ChevronDown, ChevronRight, Calendar, ChevronLeft } from 'lucide-react';
-import { getDailyDietLogs } from '../../api/tracking';
+import { Apple, Clock, Flame, Loader2, ChevronDown, ChevronRight, Calendar, ChevronLeft, RotateCcw, X } from 'lucide-react';
+import { getDailyDietLogs, deleteMealLog } from '../../api/tracking';
+import { toast } from 'react-toastify';
 
 const TodayDietLog = ({ onDataLoaded }) => {
     const [meals, setMeals] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [isExpanded, setIsExpanded] = useState(true);
+    const [showConfirmModal, setShowConfirmModal] = useState(false);
+    const [mealToDelete, setMealToDelete] = useState(null);
     
     // Date Selection State
     const getTodayStr = () => new Date().toISOString().split('T')[0];
@@ -96,8 +99,46 @@ const TodayDietLog = ({ onDataLoaded }) => {
         }
     };
 
+    const handleUnlogMeal = (meal) => {
+        setMealToDelete(meal);
+        setShowConfirmModal(true);
+    };
+
+    const confirmUnlogMeal = async () => {
+        if (!mealToDelete) return;
+        
+        try {
+            console.log("Attempting to delete meal with ID:", mealToDelete.id);
+            await deleteMealLog(mealToDelete.id);
+            setMeals(prev => prev.filter(m => m.id !== mealToDelete.id));
+            toast.success(`Unlogged ${mealToDelete.name}`);
+            
+            // Update parent with new calorie total
+            if (onDataLoaded) {
+                const newTotal = meals.filter(m => m.id !== mealToDelete.id).reduce((sum, m) => sum + (m.calories || 0), 0);
+                onDataLoaded({
+                    caloriesTarget: meals.length > 0 ? (newTotal / meals.length) * 4 : 0, // Rough estimate
+                    totalCalories: newTotal
+                });
+            }
+        } catch (error) {
+            console.error("Full error object:", error);
+            console.error("Error response:", error.response);
+            console.error("Error status:", error.response?.status);
+            console.error("Error data:", error.response?.data);
+            console.error("Error message:", error.message);
+            
+            const errorMessage = error.response?.data?.detail || error.message || "Unknown error occurred";
+            toast.error(`Failed to unlog meal: ${errorMessage}`);
+        } finally {
+            setShowConfirmModal(false);
+            setMealToDelete(null);
+        }
+    };
+
     return (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 h-full transition-all duration-300">
+        <>
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 h-full transition-all duration-300">
             <div 
                 className="flex items-center justify-between mb-5"
             >
@@ -183,28 +224,37 @@ const TodayDietLog = ({ onDataLoaded }) => {
                     {meals.map((meal) => (
                         <div 
                             key={meal.id}
-                            className="flex items-center justify-between p-4 bg-linear-to-r from-gray-50 to-white rounded-xl border border-gray-100 hover:shadow-md hover:border-emerald-100 transition-all duration-300 group"
+                            className="flex items-center justify-between p-3 sm:p-4 bg-linear-to-r from-gray-50 to-white rounded-xl border border-gray-100 hover:shadow-md hover:border-emerald-100 transition-all duration-300 group"
                         >
-                            <div className="flex items-center gap-4">
-                                <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600 group-hover:bg-emerald-100 transition-colors">
+                            <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
+                                <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600 group-hover:bg-emerald-100 transition-colors shrink-0">
                                     <Apple size={20} />
                                 </div>
-                                <div>
-                                    <h4 className="font-semibold text-gray-800">{meal.name}</h4>
-                                    <div className="flex items-center gap-2 mt-0.5">
-                                        <span className="text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                                <div className="flex-1 min-w-0">
+                                    <h4 className="font-semibold text-gray-800 truncate">{meal.name}</h4>
+                                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                        <span className="text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full whitespace-nowrap">
                                             {meal.meal_type || 'Snack'}
                                         </span>
-                                        <span className="text-xs text-gray-400 flex items-center gap-1">
+                                        <span className="text-xs text-gray-400 flex items-center gap-1 whitespace-nowrap">
                                             <Clock size={12} /> {formatTime(meal.created_at)}
                                         </span>
                                     </div>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-2 text-gray-600">
-                                <Flame size={16} className="text-orange-500" />
-                                <span className="font-bold">{Math.round(meal.calories || 0)}</span>
-                                <span className="text-xs text-gray-400">kcal</span>
+                            <div className="flex items-center gap-3 shrink-0 ml-2">
+                                <div className="flex items-center gap-2 text-gray-600">
+                                    <Flame size={16} className="text-orange-500" />
+                                    <span className="font-bold">{Math.round(meal.calories || 0)}</span>
+                                    <span className="text-xs text-gray-400">kcal</span>
+                                </div>
+                                <button
+                                    onClick={() => handleUnlogMeal(meal)}
+                                    className="p-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors shrink-0"
+                                    title="Unlog meal"
+                                >
+                                    <RotateCcw size={16} />
+                                </button>
                             </div>
                         </div>
                     ))}
@@ -223,7 +273,43 @@ const TodayDietLog = ({ onDataLoaded }) => {
                     )}
                 </div>
             )}
-        </div>
+            </div>
+
+            {/* Confirmation Modal */}
+            {showConfirmModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-300">
+                    <div className="bg-white rounded-2xl p-6 shadow-2xl max-w-sm w-full border border-gray-100">
+                        <div className="text-center mb-6">
+                            <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <RotateCcw size={24} className="text-red-600" />
+                            </div>
+                            <h3 className="text-lg font-bold text-gray-900 mb-2">Unlog Meal?</h3>
+                            <p className="text-gray-600 text-sm">
+                                Are you sure you want to unlog "{mealToDelete?.name}"? This meal will appear again in your diet plan.
+                            </p>
+                        </div>
+                        
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => {
+                                    setShowConfirmModal(false);
+                                    setMealToDelete(null);
+                                }}
+                                className="flex-1 py-2 px-4 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={confirmUnlogMeal}
+                                className="flex-1 py-2 px-4 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors"
+                            >
+                                Unlog
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </>
     );
 };
 

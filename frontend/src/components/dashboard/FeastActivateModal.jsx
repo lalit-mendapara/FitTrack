@@ -112,7 +112,7 @@ const FeastActivateModal = ({ onClose, onSuccess }) => {
     };
 
     return (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
+        <div className="fixed inset-0 z-9999 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
             <div className={`bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col max-h-screen ${loading ? 'pointer-events-none' : ''}`}>
                 
                 {loading && (
@@ -124,7 +124,7 @@ const FeastActivateModal = ({ onClose, onSuccess }) => {
                 )}
 
                 {/* Header */}
-                <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-4 shrink-0 flex items-center justify-between text-white">
+                <div className="bg-linear-to-r from-indigo-600 to-purple-600 p-4 shrink-0 flex items-center justify-between text-white">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-white/20 rounded-lg">
                             <PartyPopper size={20} />

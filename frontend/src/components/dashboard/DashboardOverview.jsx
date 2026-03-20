@@ -75,14 +75,22 @@ const DashboardOverview = ({ hasDietPlan, hasWorkoutPlan }) => {
     const isFeastDay = feastStatus?.status === 'FEAST_DAY';
     const isBanking = feastStatus?.status === 'BANKING';
 
-    const baseCaloriesTarget = isFeastDay
+    // Base calories without feast adjustments
+    const baseCalories = plan?.daily_generated_totals?.calories || dietData.caloriesTarget || 0;
+    
+    // Effective calories after feast adjustments
+    const effectiveCaloriesTarget = isFeastDay
         ? Math.round(feastStatus.effective_calories)
         : isBanking
-            ? Math.round((feastStatus.base_calories || plan?.daily_generated_totals?.calories || 0) - (feastStatus.daily_deduction || 0))
-            : (plan?.daily_generated_totals?.calories || dietData.caloriesTarget);
+            ? Math.round((feastStatus.base_calories || baseCalories) - (feastStatus.daily_deduction || 0))
+            : baseCalories;
 
-    const progressPercent = baseCaloriesTarget > 0 
-        ? Math.min((dietData.totalCalories / baseCaloriesTarget) * 100, 100)
+    // Calculate remaining calories including workout calories burned
+    const netCaloriesConsumed = dietData.totalCalories - (workoutData.totalCalories || 0);
+    const remainingCalories = Math.max(0, effectiveCaloriesTarget - netCaloriesConsumed);
+
+    const progressPercent = effectiveCaloriesTarget > 0 
+        ? Math.min((dietData.totalCalories / effectiveCaloriesTarget) * 100, 100)
         : 0;
 
     return (
@@ -140,21 +148,26 @@ const DashboardOverview = ({ hasDietPlan, hasWorkoutPlan }) => {
                     </div>
                     
                     {/* Calories Target - Right side */}
-                    {baseCaloriesTarget > 0 && (
+                    {effectiveCaloriesTarget > 0 && (
                         <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
                             {/* Workout To Burn */}
                             <div className="flex flex-1 items-center justify-between sm:justify-start gap-4 bg-linear-to-r from-orange-50 to-red-50 px-5 py-3 rounded-xl border border-orange-100">
                                 <div className="flex items-center gap-2">
                                     <Flame size={20} className="text-orange-600" />
-                                    <span className="text-sm font-medium text-gray-600">To Burn</span>
+                                    <span className="text-sm font-medium text-gray-600">Burned</span>
                                 </div>
                                 <div className="text-right">
                                     <div className="flex items-baseline gap-1">
                                         <span className="text-2xl font-black text-orange-600">
-                                            {workoutData.remainingCalories || 0}
+                                            {Math.round(workoutData.totalCalories || 0)}
                                         </span>
                                         <span className="text-xs text-gray-400 font-medium">/ {Math.round(workoutData.targetCalories || 0)}</span>
                                     </div>
+                                    {workoutData.remainingCalories > 0 && (
+                                        <div className="text-xs text-gray-500 mt-1">
+                                            {Math.round(workoutData.remainingCalories)} to go
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
@@ -167,10 +180,15 @@ const DashboardOverview = ({ hasDietPlan, hasWorkoutPlan }) => {
                                 <div className="text-right">
                                     <div className="flex items-baseline gap-1">
                                         <span className="text-2xl font-black text-emerald-600">
-                                            {Math.max(0, Math.round(baseCaloriesTarget - dietData.totalCalories))}
+                                            {Math.round(remainingCalories)}
                                         </span>
-                                        <span className="text-xs text-gray-400 font-medium">/ {Math.round(baseCaloriesTarget)}</span>
+                                        <span className="text-xs text-gray-400 font-medium">/ {Math.round(effectiveCaloriesTarget)}</span>
                                     </div>
+                                    {(isBanking || isFeastDay) && baseCalories !== effectiveCaloriesTarget && (
+                                        <div className="text-xs text-gray-500 mt-1">
+                                            Base: {Math.round(baseCalories)} kcal
+                                        </div>
+                                    )}
                                     <div className="w-24 h-1.5 bg-gray-200 rounded-full mt-1 ml-auto">
                                         <div 
                                             className="h-full bg-linear-to-r from-emerald-500 to-teal-500 rounded-full transition-all duration-500"

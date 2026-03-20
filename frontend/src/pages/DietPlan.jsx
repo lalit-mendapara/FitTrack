@@ -125,6 +125,17 @@ const DietPlan = ({ isEmbedded = false, onPlanGenerated }) => {
     feastModeService.getStatus().then(status => setFeastStatus(status));
   }, []);
 
+  // Calculate base and effective calories for consistency
+  const isFeastDay = feastStatus?.status === 'FEAST_DAY';
+  const isBanking = feastStatus?.status === 'BANKING';
+  
+  const baseCalories = plan?.daily_generated_totals?.calories || 0;
+  const effectiveCalories = isFeastDay
+    ? Math.round(feastStatus.effective_calories)
+    : isBanking
+        ? Math.round((feastStatus.base_calories || baseCalories) - (feastStatus.daily_deduction || 0))
+        : baseCalories;
+
   // State for persistence
   const [loggedMeals, setLoggedMeals] = useState([]);
   
@@ -150,6 +161,13 @@ const DietPlan = ({ isEmbedded = false, onPlanGenerated }) => {
     if (!plan?.meal_plan) return [];
     return sortMealsByTime(plan.meal_plan);
   }, [plan?.meal_plan, currentTime]);
+
+  // Filter to show only unlogged meals
+  const unloggedMeals = useMemo(() => {
+    return sortedMeals.filter(meal => 
+      !loggedMeals.some(loggedMeal => loggedMeal.name === meal.dish_name)
+    );
+  }, [sortedMeals, loggedMeals]);
 
   // Update current time every minute to trigger re-sorting
   useEffect(() => {
@@ -406,13 +424,13 @@ const DietPlan = ({ isEmbedded = false, onPlanGenerated }) => {
                     <p className="text-sm font-semibold text-purple-600 mt-1 flex items-center gap-1.5 flex-wrap">
                       Banking {Math.round(feastStatus.daily_deduction)} kcal/day for <span className="font-black">{feastStatus.event_name}</span>
                       <span className="text-gray-400 mx-1">•</span>
-                      Today's target: {plan ? Math.round((feastStatus.base_calories || plan.daily_generated_totals?.calories || 0) - (feastStatus.daily_deduction || 0)) : '—'} kcal
+                      <span className="text-gray-600">Base: {Math.round(baseCalories)} kcal → Today: {Math.round(effectiveCalories)} kcal</span>
                     </p>
                   ) : feastStatus && feastStatus.status === 'FEAST_DAY' ? (
                     <p className="text-sm font-semibold text-amber-600 mt-1 flex items-center gap-1.5 flex-wrap">
                       🎉 Banked <span className="font-black">+{feastStatus.target_bank_calories} kcal</span> added to today's plan for <span className="font-black">{feastStatus.event_name}</span>
                       <span className="text-gray-400 mx-1">•</span>
-                      Macros as per regular plan
+                      <span className="text-gray-600">Base: {Math.round(baseCalories)} kcal → Today: {Math.round(effectiveCalories)} kcal</span>
                     </p>
                   ) : (
                     <p className="text-sm text-gray-500 font-medium max-w-sm mx-auto lg:mx-0">
@@ -425,11 +443,7 @@ const DietPlan = ({ isEmbedded = false, onPlanGenerated }) => {
                {plan && (
                  <div className="flex flex-wrap justify-center gap-3 sm:gap-6">
                      <NutrientMeter 
-                        value={
-                           feastStatus?.status === 'FEAST_DAY' ? Math.round(feastStatus.effective_calories) 
-                           : feastStatus?.status === 'BANKING' ? Math.round((feastStatus.base_calories || plan?.daily_generated_totals?.calories || 0) - (feastStatus.daily_deduction || 0))
-                           : (plan.daily_generated_totals?.calories || 0)
-                        } 
+                        value={effectiveCalories}
                         label="Calories" 
                         unit="" 
                         color={feastStatus?.status === 'FEAST_DAY' ? '#f59e0b' : '#6366f1'}
@@ -576,18 +590,36 @@ const DietPlan = ({ isEmbedded = false, onPlanGenerated }) => {
                    </div>
                </div>
                
-               <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-2 gap-6 pb-12">
-                  {sortedMeals.map((meal) => (
-                     <MealCard 
-                        key={meal.meal_id} 
-                        meal={meal} 
-                        loggedMeals={loggedMeals}
-                        onLogUpdate={fetchLogs}
-                        socialEvent={feastStatus}
-                        onPlanRefresh={refreshPlan}
-                     />
-                  ))}
-               </div>
+               {unloggedMeals.length === 0 ? (
+                  <div className="text-center py-20">
+                     <div className="max-w-md mx-auto">
+                        <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                           <CheckCircle size={40} className="text-emerald-600" />
+                        </div>
+                        <h3 className="text-2xl font-bold text-gray-900 mb-3">All Meals Logged!</h3>
+                        <p className="text-gray-600 mb-6">Great job! You've logged all your meals for today. Check your dashboard to see your progress.</p>
+                        <button 
+                           onClick={() => window.location.href = '/dashboard?tab=dashboard-overview'}
+                           className="inline-flex items-center justify-center px-6 py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-all hover:shadow-lg hover:-translate-y-0.5"
+                        >
+                           View Dashboard
+                        </button>
+                     </div>
+                  </div>
+               ) : (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-2 gap-6 pb-12">
+                     {unloggedMeals.map((meal) => (
+                        <MealCard 
+                           key={meal.meal_id} 
+                           meal={meal} 
+                           loggedMeals={loggedMeals}
+                           onLogUpdate={fetchLogs}
+                           socialEvent={feastStatus}
+                           onPlanRefresh={refreshPlan}
+                        />
+                     ))}
+                  </div>
+               )}
             </>
          )}
       </div>

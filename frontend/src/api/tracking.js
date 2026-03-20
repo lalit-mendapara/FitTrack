@@ -50,6 +50,10 @@ export const deleteMealLog = async (logId) => {
         await axios.delete(`/tracking/log-meal/${logId}`);
     } catch (error) {
          console.error("Error deleting meal log:", error);
+         console.error("Error response:", error.response);
+         console.error("Error status:", error.response?.status);
+         console.error("Error data:", error.response?.data);
+         console.error("Error message:", error.message);
          throw error;
     }
 };
