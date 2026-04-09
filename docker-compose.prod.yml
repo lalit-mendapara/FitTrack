@@ -44,9 +44,11 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_MULTIPLE_DATABASES: langfuse
       TZ: ${TZ}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./init-multiple-dbs.sh:/docker-entrypoint-initdb.d/init-multiple-dbs.sh:ro
       - /etc/localtime:/etc/localtime:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
@@ -110,7 +112,7 @@ services:
       LLM_MODEL: ${LLM_MODEL}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
-      LANGFUSE_HOST: ${LANGFUSE_HOST:-https://us.cloud.langfuse.com}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-http://langfuse:3000}
       TZ: ${TZ}
     depends_on:
       postgres:
@@ -148,13 +150,65 @@ services:
       LLM_MODEL: ${LLM_MODEL}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
-      LANGFUSE_HOST: ${LANGFUSE_HOST:-https://us.cloud.langfuse.com}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-http://langfuse:3000}
       TZ: ${TZ}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  # ============================================
+  # Langfuse (Self-hosted LLM Observability)
+  # ============================================
+  langfuse:
+    image: langfuse/langfuse:latest
+    container_name: diet_planner_langfuse
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/langfuse
+      NEXTAUTH_URL: https://${LANGFUSE_DOMAIN:-langfuse.${DOMAIN}}
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET}
+      SALT: ${LANGFUSE_SALT}
+      CLICKHOUSE_URL: http://langfuse-clickhouse:8123
+      CLICKHOUSE_MIGRATION_URL: clickhouse://langfuse-clickhouse:9000
+      LANGFUSE_INIT_ORG_ID: fittrack
+      LANGFUSE_INIT_ORG_NAME: FitTrack
+      LANGFUSE_INIT_PROJECT_ID: fittrack-prod
+      LANGFUSE_INIT_PROJECT_NAME: FitTrack Production
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+      TZ: ${TZ}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      langfuse-clickhouse:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.langfuse.rule=Host(`${LANGFUSE_DOMAIN:-langfuse.${DOMAIN}}`)"
+      - "traefik.http.routers.langfuse.entrypoints=websecure"
+      - "traefik.http.routers.langfuse.tls.certresolver=letsencrypt"
+      - "traefik.http.services.langfuse.loadbalancer.server.port=3000"
+
+  langfuse-clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: diet_planner_clickhouse
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_DB: langfuse
+      CLICKHOUSE_USER: langfuse
+      CLICKHOUSE_PASSWORD: ${LANGFUSE_CLICKHOUSE_PASSWORD:-langfuse}
+      TZ: ${TZ}
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - clickhouse_logs:/var/log/clickhouse-server
+      - /etc/localtime:/etc/localtime:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8123/ping | grep -q Ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # ============================================
   # Ollama LLM Server
@@ -213,5 +267,9 @@ volumes:
     name: diet_planner_uploads_data
   ollama_data:
     name: diet_planner_ollama_data
+  clickhouse_data:
+    name: diet_planner_clickhouse_data
+  clickhouse_logs:
+    name: diet_planner_clickhouse_logs
   traefik_certs:
     name: diet_planner_traefik_certs
