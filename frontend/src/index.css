@@ -97,7 +97,7 @@
 /* ── RIGHT PANEL ── */
 .feast-right-panel {
   width: 100%;
-  background: #0f0d1f;
+  background: #ffffff;
   display: flex;
   flex-direction: column;
   overflow-y: auto;
@@ -110,8 +110,7 @@
   }
 }
 .feast-right-panel::-webkit-scrollbar { width: 3px; }
-.feast-right-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); }
-
+.feast-right-panel::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); }
 .feast-rp-inner {
   padding: 16px 14px;
   display: flex;
@@ -121,8 +120,8 @@
 
 /* ── HERO ACTIVATION CARD ── */
 .feast-hero-card {
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.09);
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
   border-radius: 18px;
   padding: 20px 16px;
   text-align: center;
@@ -174,11 +173,11 @@
 .feast-orbit-dot.done { background: #fbbf24; }
 
 .feast-hero-title {
-  font-size: 16px; font-weight: 800; color: white;
+  font-size: 16px; font-weight: 800; color: #1e293b;
   letter-spacing: -0.3px; margin-bottom: 3px;
 }
 .feast-hero-sub {
-  font-size: 11px; color: rgba(255,255,255,0.45);
+  font-size: 11px; color: #64748b;
   margin-bottom: 16px; min-height: 16px;
 }
 
@@ -191,7 +190,7 @@
   width: 100%; height: 100%; transform: rotate(-90deg);
 }
 .feast-ring-track {
-  fill: none; stroke: rgba(255,255,255,0.08); stroke-width: 7;
+  fill: none; stroke: #e2e8f0; stroke-width: 7;
 }
 .feast-ring-fill {
   fill: none; stroke: #818cf8; stroke-width: 7; stroke-linecap: round;
@@ -202,7 +201,7 @@
 .feast-ring-pct {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
-  font-size: 16px; font-weight: 800; color: white;
+  font-size: 16px; font-weight: 800; color: #1e293b;
   font-family: 'JetBrains Mono', monospace;
 }
 
@@ -212,7 +211,7 @@
 }
 .feast-step-dot {
   height: 5px; border-radius: 3px;
-  background: rgba(255,255,255,0.18); width: 5px;
+  background: #e2e8f0; width: 5px;
   transition: width 0.35s ease, background 0.35s ease;
 }
 .feast-step-dot.active { width: 16px; background: #818cf8; }
@@ -220,13 +219,13 @@
 
 /* ── SECTION CARD ── */
 .feast-section-card {
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.08);
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
   border-radius: 16px;
   padding: 14px;
 }
 .feast-eyebrow {
-  font-size: 9px; font-weight: 700; color: rgba(255,255,255,0.3);
+  font-size: 12px; font-weight: 700; color: #64748b;
   letter-spacing: 2px; margin-bottom: 10px; text-transform: uppercase;
 }
 
@@ -236,22 +235,22 @@
 }
 .feast-unlock-item {
   padding: 10px; border-radius: 10px;
-  background: rgba(255,255,255,0.02);
-  border: 1px solid rgba(255,255,255,0.04);
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
   opacity: 0.3; transform: scale(0.94);
   transition: all 0.45s ease;
 }
 .feast-unlock-item.revealed {
-  background: rgba(255,255,255,0.07);
-  border-color: rgba(255,255,255,0.1);
+  background: #ffffff;
+  border-color: #cbd5e1;
   opacity: 1; transform: scale(1);
 }
 .feast-unlock-name {
-  font-size: 9px; color: rgba(255,255,255,0.4); margin-bottom: 4px;
+  font-size: 9px; color: #64748b; margin-bottom: 4px;
 }
 .feast-unlock-val {
   font-size: 13px; font-weight: 800;
-  color: rgba(255,255,255,0.2); transition: color 0.4s;
+  color: #475569; transition: color 0.4s;
 }
 
 /* ── TIPS ── */
@@ -264,14 +263,14 @@
   opacity: 0; transform: translateY(6px);
 }
 .feast-tip-emoji {
-  font-size: 20px; background: rgba(255,255,255,0.07);
+  font-size: 20px; background: #f1f5f9;
   border-radius: 8px; padding: 7px 8px; flex-shrink: 0; line-height: 1;
 }
 .feast-tip-title {
-  font-size: 12px; font-weight: 700; color: white; margin-bottom: 3px;
+  font-size: 12px; font-weight: 700; color: #1e293b; margin-bottom: 3px;
 }
 .feast-tip-body {
-  font-size: 10px; color: rgba(255,255,255,0.45); line-height: 1.5;
+  font-size: 10px; color: #64748b; line-height: 1.5;
 }
 .feast-tip-dots {
   display: flex; gap: 4px; margin-top: 10px;
@@ -280,45 +279,45 @@
   width: 4px; height: 4px; border-radius: 50%;
   background: rgba(255,255,255,0.18); transition: background 0.3s;
 }
-.feast-tip-dot.active { background: #818cf8; }
+.feast-tip-dot.active { background: #cbd5e1; }
 
 /* ── FEAST PREVIEW ── */
 .feast-preview {
-  background: linear-gradient(135deg, rgba(99,102,241,0.18), rgba(245,158,11,0.12));
-  border: 1px solid rgba(99,102,241,0.25);
+  background: linear-gradient(135deg, #f0f9ff, #fefce8);
+  border: 1px solid #e2e8f0;
   border-radius: 16px;
   padding: 14px;
   display: flex; gap: 10px; align-items: center;
 }
 .feast-preview-emoji { font-size: 28px; flex-shrink: 0; }
-.feast-preview-title { font-size: 12px; font-weight: 700; color: white; margin-bottom: 2px; }
-.feast-preview-body { font-size: 10px; color: rgba(255,255,255,0.45); line-height: 1.4; }
+.feast-preview-title { font-size: 12px; font-weight: 700; color: #1e293b; margin-bottom: 2px; }
+.feast-preview-body { font-size: 10px; color: #64748b; line-height: 1.4; }
 .feast-preview-badge {
   margin-left: auto; flex-shrink: 0;
-  background: rgba(99,102,241,0.28); border-radius: 8px;
-  padding: 5px 9px; font-size: 9px; font-weight: 700; color: #a5b4fc;
+  background: #dbeafe; border-radius: 8px;
+  padding: 5px 9px; font-size: 9px; font-weight: 700; color: #3b82f6;
   white-space: nowrap; transition: all 0.4s;
 }
 
 /* ── TICKER ── */
 .feast-ticker {
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.06);
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
   border-radius: 12px;
   padding: 10px 12px;
   display: flex; align-items: center; gap: 8px;
   overflow: hidden;
 }
 .feast-ticker-label {
-  font-size: 8px; font-weight: 700; color: rgba(255,255,255,0.25);
+  font-size: 8px; font-weight: 700; color: #64748b;
   letter-spacing: 1.5px; white-space: nowrap;
 }
 .feast-ticker-divider {
-  width: 1px; height: 14px; background: rgba(255,255,255,0.1); flex-shrink: 0;
+  width: 1px; height: 14px; background: #e2e8f0; flex-shrink: 0;
 }
 .feast-ticker-scroll { flex: 1; overflow: hidden; }
 .feast-ticker-inner {
-  display: inline-block; font-size: 10px; color: rgba(255,255,255,0.45);
+  display: inline-block; font-size: 10px; color: #64748b;
   white-space: nowrap; animation: feast-ticker 22s linear infinite;
 }
 

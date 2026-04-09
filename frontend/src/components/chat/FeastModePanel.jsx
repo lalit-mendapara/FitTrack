@@ -180,8 +180,8 @@ const FeastModePanel = ({ isActivating = false, proposalData = null, feastStatus
         <div className="feast-rp-inner">
           <div className="feast-section-card" style={{ textAlign: 'center', padding: '30px 16px' }}>
             <div style={{ fontSize: 40, marginBottom: 12 }}>⚡</div>
-            <div style={{ fontSize: 16, fontWeight: 800, color: 'white', marginBottom: 6 }}>Feast Mode</div>
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', lineHeight: 1.5 }}>
+            <div style={{ fontSize: 16, fontWeight: 800, color: '#1e293b', marginBottom: 6 }}>Feast Mode</div>
+            <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1.5 }}>
               Activate Feast Mode from the chat to start banking calories for your upcoming event.
             </div>
           </div>
@@ -341,7 +341,7 @@ const FeastModePanel = ({ isActivating = false, proposalData = null, feastStatus
 
         {/* Event details card */}
         <div className="feast-section-card">
-          <div className="feast-eyebrow">YOUR FEAST PLAN</div>
+          <div className="feast-eyebrow text-lg font-semibold">YOUR FEAST PLAN</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <FeastDetailRow label="Event" val={eventName} capitalize />
             <FeastDetailRow label="Date" val={eventDate} />
@@ -418,10 +418,10 @@ const Ticker = () => (
 
 const FeastDetailRow = ({ label, val, color, capitalize }) => (
   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-    <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>{label}</span>
+    <span style={{ fontSize: 15, color: '#64748b', fontWeight:500 }}>{label}</span>
     <span style={{
-      fontSize: 12, fontWeight: 700,
-      color: color ?? 'white',
+      fontSize: 15, fontWeight: 700,
+      color: color ?? '#1e293b',
       textTransform: capitalize ? 'capitalize' : undefined,
       maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
     }}>{val}</span>
