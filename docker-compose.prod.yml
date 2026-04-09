@@ -1,38 +1,8 @@
 # Diet Planner - Production Docker Compose
-# For deployment on Hetzner (or any VPS)
+# For deployment on Hetzner VPS (behind FastPanel nginx)
 # Images are pre-built and pulled from GHCR
 
 services:
-  # ============================================
-  # Traefik Reverse Proxy (HTTPS)
-  # ============================================
-  traefik:
-    image: traefik:v3.4
-    container_name: diet_planner_traefik
-    restart: unless-stopped
-    command:
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--entrypoints.web.address=:80"
-      - "--entrypoints.websecure.address=:443"
-      # HTTP -> HTTPS redirect
-      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
-      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
-      # Let's Encrypt
-      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
-      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
-      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
-      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - traefik_certs:/letsencrypt
-      - /etc/localtime:/etc/localtime:ro
-    environment:
-      TZ: ${TZ}
-
   # ============================================
   # PostgreSQL Database
   # ============================================
@@ -97,6 +67,7 @@ services:
     restart: unless-stopped
     volumes:
       - uploads_data:/app/uploads
+      - ./backend/app/services/llm_service.py:/app/app/services/llm_service.py:ro
       - /etc/localtime:/etc/localtime:ro
     environment:
       SQLALCHEMY_DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
@@ -136,6 +107,7 @@ services:
     command: celery -A app.celery_app worker --beat --loglevel=info
     volumes:
       - celery_data:/app/celery_beat_data
+      - ./backend/app/services/llm_service.py:/app/app/services/llm_service.py:ro
       - /etc/localtime:/etc/localtime:ro
     environment:
       SQLALCHEMY_DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
@@ -163,9 +135,11 @@ services:
   # Langfuse (Self-hosted LLM Observability)
   # ============================================
   langfuse:
-    image: langfuse/langfuse:latest
+    image: langfuse/langfuse:3
     container_name: diet_planner_langfuse
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:3001:3000"
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/langfuse
       NEXTAUTH_URL: https://${LANGFUSE_DOMAIN:-langfuse.${DOMAIN}}
@@ -173,24 +147,38 @@ services:
       SALT: ${LANGFUSE_SALT}
       CLICKHOUSE_URL: http://langfuse-clickhouse:8123
       CLICKHOUSE_MIGRATION_URL: clickhouse://langfuse-clickhouse:9000
-      LANGFUSE_INIT_ORG_ID: fittrack
-      LANGFUSE_INIT_ORG_NAME: FitTrack
-      LANGFUSE_INIT_PROJECT_ID: fittrack-prod
-      LANGFUSE_INIT_PROJECT_NAME: FitTrack Production
-      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
-      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+      CLICKHOUSE_USER: langfuse
+      CLICKHOUSE_PASSWORD: ${LANGFUSE_CLICKHOUSE_PASSWORD:-langfuse}
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: us-east-1
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minioadmin
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: minioadmin
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
       TZ: ${TZ}
     depends_on:
       postgres:
         condition: service_healthy
       langfuse-clickhouse:
         condition: service_healthy
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.langfuse.rule=Host(`${LANGFUSE_DOMAIN:-langfuse.${DOMAIN}}`)"
-      - "traefik.http.routers.langfuse.entrypoints=websecure"
-      - "traefik.http.routers.langfuse.tls.certresolver=letsencrypt"
-      - "traefik.http.services.langfuse.loadbalancer.server.port=3000"
+      langfuse-minio:
+        condition: service_started
+
+  # ============================================
+  # MinIO (S3-compatible storage for Langfuse v3)
+  # ============================================
+  langfuse-minio:
+    image: minio/minio:latest
+    container_name: diet_planner_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+      TZ: ${TZ}
+    volumes:
+      - minio_data:/data
+      - /etc/localtime:/etc/localtime:ro
 
   langfuse-clickhouse:
     image: clickhouse/clickhouse-server:latest
@@ -204,6 +192,7 @@ services:
     volumes:
       - clickhouse_data:/var/lib/clickhouse
       - clickhouse_logs:/var/log/clickhouse-server
+      - ./clickhouse-config.xml:/etc/clickhouse-server/config.d/keeper.xml:ro
       - /etc/localtime:/etc/localtime:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8123/ping | grep -q Ok"]
@@ -222,6 +211,7 @@ services:
       - ollama_data:/root/.ollama
       - /etc/localtime:/etc/localtime:ro
     environment:
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY}
       TZ: ${TZ}
     # Uncomment below to use NVIDIA GPU
     # deploy:
@@ -234,23 +224,20 @@ services:
 
   # ============================================
   # React Frontend (pre-built from GHCR, nginx)
+  # Exposed on port 8080 — FastPanel nginx proxies to this
   # ============================================
   frontend:
     image: ghcr.io/aimaven-tech/fittrack/frontend:latest
     container_name: diet_planner_frontend
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:80"
     volumes:
       - /etc/localtime:/etc/localtime:ro
     environment:
       TZ: ${TZ}
     depends_on:
       - backend
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.frontend.rule=Host(`${DOMAIN}`)"
-      - "traefik.http.routers.frontend.entrypoints=websecure"
-      - "traefik.http.routers.frontend.tls.certresolver=letsencrypt"
-      - "traefik.http.services.frontend.loadbalancer.server.port=80"
 
 # ============================================
 # Persistent Volumes
@@ -272,5 +259,5 @@ volumes:
     name: diet_planner_clickhouse_data
   clickhouse_logs:
     name: diet_planner_clickhouse_logs
-  traefik_certs:
-    name: diet_planner_traefik_certs
+  minio_data:
+    name: diet_planner_minio_data

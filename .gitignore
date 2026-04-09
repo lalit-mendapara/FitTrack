@@ -136,3 +136,4 @@ uploaded_image_*.jpg
 backup/
 backups/
 db_backup/
+.github_pat

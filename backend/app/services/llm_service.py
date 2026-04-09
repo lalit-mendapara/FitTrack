@@ -266,16 +266,21 @@ def get_llm(temperature: float = 0.7, max_tokens: int = 2000, json_mode: bool = 
         or DEFAULT_MODELS.get(provider, 'gpt-oss:120b-cloud')
     )
 
-    # 1. Ollama (Local)
+    # 1. Ollama (Local or Cloud)
     if provider == "ollama":
         format_val = "json" if json_mode else ""
+        ollama_api_key = cfg.get('ollama_api_key') or os.getenv("OLLAMA_API_KEY", "")
+        ollama_kwargs = {}
+        if ollama_api_key:
+            ollama_kwargs["headers"] = {"Authorization": f"Bearer {ollama_api_key}"}
         return ChatOllama(
             base_url=live_ollama_url,
             model=live_model,
             temperature=temperature,
             num_predict=max_tokens,
             format=format_val,
-            timeout=120.0
+            timeout=120.0,
+            client_kwargs=ollama_kwargs,
         )
 
     # 2. OpenAI Compatible (OpenRouter, OpenAI)
