@@ -133,8 +133,8 @@ pytokens==0.1.10
 pytz==2025.2
 PyYAML==6.0.3
 qdrant-client==1.16.2
-# Editable install with no version control (rag-bid-pipeline==0.1.0)
--e /Users/lalit/Documents/Project_23_2/src/rag_bid_pipeline
+# rag-bid-pipeline was a local editable install — removed (not available in CI)
+# If needed, publish to PyPI or include as a git dependency
 RapidFuzz==3.14.3
 redis==7.1.0
 regex==2025.11.3
