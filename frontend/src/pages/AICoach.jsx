@@ -1162,16 +1162,6 @@ const AICoach = () => {
                     <div className="feast-panel-mobile-backdrop" onClick={() => setShowRightPanel(false)} />
                 )}
                 <div className={`feast-panel-mobile ${showRightPanel ? 'open' : ''}`}>
-                    <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                        <span style={{ color: 'white', fontWeight: 700, fontSize: 13 }}>Feast Mode Panel</span>
-                        <button
-                            onClick={() => setShowRightPanel(false)}
-                            className="cursor-pointer"
-                            style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)' }}
-                        >
-                            <X className="w-5 h-5" />
-                        </button>
-                    </div>
                     <FeastModePanel
                         isActivating={feastActivating && showRightPanel}
                         proposalData={activationProposal}
