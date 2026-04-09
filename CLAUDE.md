@@ -10,7 +10,7 @@ Diet Planner & Fitness Tracker - An AI-powered web application that generates pe
 - Backend: FastAPI (Python 3.10+), SQLAlchemy ORM, PostgreSQL
 - Frontend: React (Vite), Tailwind CSS v4
 - Background Tasks: Celery with Redis broker
-- AI/ML: LangChain, Qdrant (vector DB), sentence-transformers
+- AI/ML: LangChain, Qdrant (vector DB), sentence-transformers, NeMo Guardrails
 - Authentication: JWT tokens with httpOnly cookies
 
 ## Common Commands
@@ -121,12 +121,14 @@ backend/app/
 │   ├── user_profile.py
 │   ├── meal_plan.py  # Meal plan generation and retrieval
 │   ├── workout_plan.py
+│   ├── workout_plan_async.py  # Async workout generation (background task-based)
 │   ├── chat.py       # AI Coach chat interface
-│   ├── tracking.py   # Meal/workout tracking
+│   ├── tracking.py   # Meal/workout tracking (mounted at /tracking prefix)
 │   ├── notifications.py
 │   ├── social_events.py
 │   ├── feast_mode.py  # Feast mode (social events with adjusted meals)
-│   └── workout_preferences.py
+│   ├── workout_preferences.py
+│   └── admin/        # Admin panel API (auth, users, analytics, foods, exercises, feasts, settings)
 ├── models/           # SQLAlchemy database models
 ├── schemas/          # Pydantic validation schemas (request/response)
 ├── crud/             # Database operations (Create, Read, Update, Delete)
@@ -144,6 +146,14 @@ backend/app/
 ├── celery_app.py     # Celery configuration
 └── main.py           # FastAPI app initialization and CORS setup
 ```
+
+### Admin Module
+
+A full admin panel lives in `backend/app/api/admin/` with sub-routers for auth, users, analytics, foods, exercises, feasts, and settings. See `ADMIN_MODULE_SUMMARY.md` at the project root for details.
+
+### Static Files / Uploads
+
+Backend mounts `backend/uploads/` at the `/uploads` path (created on startup). Avatar images are stored in `backend/uploads/avatars/`. The Vite proxy also forwards `/uploads` requests to the backend.
 
 ### Frontend Structure
 
@@ -279,8 +289,8 @@ Alembic migrations run automatically on startup (falls back to `create_all` for 
 
 ### Frontend API Calls
 
-- All backend requests go through Vite proxy: `/api/*` → `http://backend:8000/*` (path rewritten via `vite.config.js`)
-- **Local dev gotcha**: The proxy target is `http://backend:8000` (Docker service name). For local dev without Docker, change to `http://localhost:8000`
+- All backend requests go through Vite proxy: `/api/*` and `/uploads/*` → `http://backend:8000/*` (path rewritten via `vite.config.js`)
+- **Local dev gotcha**: The proxy target is hardcoded to `http://backend:8000` (Docker service name), not configurable via env vars. For local dev without Docker, change the target in `vite.config.js` to `http://localhost:8000`
 - Axios instance in `frontend/src/api/axios.js` sets `baseURL: '/api'` and adds Bearer token from `localStorage('diet_planner_token')`
 - AuthContext provides `login`, `logout`, `user` state globally
 - 401/403 responses dispatch `auth:logout` custom event globally

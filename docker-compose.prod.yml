@@ -1,0 +1,217 @@
+# Diet Planner - Production Docker Compose
+# For deployment on Hetzner (or any VPS)
+# Images are pre-built and pulled from GHCR
+
+services:
+  # ============================================
+  # Traefik Reverse Proxy (HTTPS)
+  # ============================================
+  traefik:
+    image: traefik:v3.4
+    container_name: diet_planner_traefik
+    restart: unless-stopped
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      # HTTP -> HTTPS redirect
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      # Let's Encrypt
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_certs:/letsencrypt
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      TZ: ${TZ}
+
+  # ============================================
+  # PostgreSQL Database
+  # ============================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: diet_planner_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      TZ: ${TZ}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - /etc/localtime:/etc/localtime:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
+  # Redis (Celery Broker)
+  # ============================================
+  redis:
+    image: redis:7-alpine
+    container_name: diet_planner_redis
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ}
+    volumes:
+      - redis_data:/data
+      - /etc/localtime:/etc/localtime:ro
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
+  # Qdrant Vector Database
+  # ============================================
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: diet_planner_qdrant
+    restart: unless-stopped
+    volumes:
+      - qdrant_data:/qdrant/storage
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      QDRANT__LOG_LEVEL: INFO
+      TZ: ${TZ}
+
+  # ============================================
+  # FastAPI Backend (pre-built from GHCR)
+  # ============================================
+  backend:
+    image: ghcr.io/aimaven-tech/fittrack/backend:latest
+    container_name: diet_planner_backend
+    restart: unless-stopped
+    volumes:
+      - uploads_data:/app/uploads
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      SQLALCHEMY_DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      SECRET_KEY: ${SECRET_KEY}
+      ALGORITHM: ${ALGORITHM:-HS256}
+      REDIS_URL: redis://redis:6379/0
+      QDRANT_URL: http://qdrant:6333
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-gpt-oss:120b-cloud}
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
+      LLM_API_KEY: ${LLM_API_KEY}
+      LLM_MODEL: ${LLM_MODEL}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-https://us.cloud.langfuse.com}
+      TZ: ${TZ}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      ollama:
+        condition: service_started
+
+  # ============================================
+  # Celery Worker with Beat Scheduler
+  # ============================================
+  celery:
+    image: ghcr.io/aimaven-tech/fittrack/backend:latest
+    container_name: diet_planner_celery
+    restart: unless-stopped
+    user: root
+    command: celery -A app.celery_app worker --beat --loglevel=info
+    volumes:
+      - celery_data:/app/celery_beat_data
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      SQLALCHEMY_DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      SECRET_KEY: ${SECRET_KEY}
+      ALGORITHM: ${ALGORITHM:-HS256}
+      REDIS_URL: redis://redis:6379/0
+      QDRANT_URL: http://qdrant:6333
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-gpt-oss:120b-cloud}
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
+      LLM_API_KEY: ${LLM_API_KEY}
+      LLM_MODEL: ${LLM_MODEL}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-https://us.cloud.langfuse.com}
+      TZ: ${TZ}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ============================================
+  # Ollama LLM Server
+  # ============================================
+  ollama:
+    image: ollama/ollama:latest
+    container_name: diet_planner_ollama
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      TZ: ${TZ}
+    # Uncomment below to use NVIDIA GPU
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  # ============================================
+  # React Frontend (pre-built from GHCR, nginx)
+  # ============================================
+  frontend:
+    image: ghcr.io/aimaven-tech/fittrack/frontend:latest
+    container_name: diet_planner_frontend
+    restart: unless-stopped
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      TZ: ${TZ}
+    depends_on:
+      - backend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.frontend.entrypoints=websecure"
+      - "traefik.http.routers.frontend.tls.certresolver=letsencrypt"
+      - "traefik.http.services.frontend.loadbalancer.server.port=80"
+
+# ============================================
+# Persistent Volumes
+# ============================================
+volumes:
+  postgres_data:
+    name: diet_planner_postgres_data
+  redis_data:
+    name: diet_planner_redis_data
+  qdrant_data:
+    name: diet_planner_qdrant_data
+  celery_data:
+    name: diet_planner_celery_data
+  uploads_data:
+    name: diet_planner_uploads_data
+  ollama_data:
+    name: diet_planner_ollama_data
+  traefik_certs:
+    name: diet_planner_traefik_certs
