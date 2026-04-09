@@ -57,6 +57,10 @@ allowed_origins = [
     "http://127.0.0.1:5173",    # Vite dev server (local alt)
     "http://frontend:5173",     # Docker container name
 ]
+# Add extra origins from env (comma-separated)
+extra_origins = os.environ.get("CORS_ORIGINS", "")
+if extra_origins:
+    allowed_origins.extend([o.strip() for o in extra_origins.split(",") if o.strip()])
 
 app.add_middleware(
     CORSMiddleware,
